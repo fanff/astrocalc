@@ -32,10 +32,10 @@ Expensive alt-az sampling is **precomputed** and stored. The UI reads the cache;
 
 Current solar-system path:
 
-1. Build night intervals for the date range and location.
+1. Daily (and Long Term) read from SQLite; on Daily date selection the app prefetches the selected night **+ 10 nights** in the background (`egui_async::Bind`).
 2. Sample object positions at a chosen frequency during each night.
-3. Persist night metadata (`dateinfo`) and a bincode blob of positions (`objectposition`).
-4. Daily (and later long-term) panels load from SQLite instead of recomputing.
+3. Persist night metadata (`dateinfo`) and a bincode blob of positions (`objectposition`, `kind='solar'`).
+4. Deep-sky uses the same table with `kind='dso'` and merges newly selected ids into the night blob.
 
 **Rules:**
 

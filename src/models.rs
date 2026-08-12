@@ -3,6 +3,7 @@ use crate::panels::LatLon;
 use crate::solarsystemcalc::{NightInfo, ObjectPosition};
 use chrono::{DateTime, NaiveDate, Utc};
 use diesel::prelude::*;
+use diesel::{BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 
 #[derive(Queryable, Selectable, Clone)]
 #[diesel(table_name = crate::schema::dateinfo)]
@@ -140,6 +141,11 @@ impl DateInfoInsert {
             .expect("error saving");
     }
 }
+/// Solar-system planet/Moon blob family.
+pub const POSITION_KIND_SOLAR: &str = "solar";
+/// Deep-sky catalog blob family (selected ids merged over time).
+pub const POSITION_KIND_DSO: &str = "dso";
+
 #[derive(Queryable, Selectable, QueryableByName)]
 #[diesel(table_name = crate::schema::objectposition)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -149,12 +155,11 @@ pub struct ObjectPositionStored {
     pub lat_sector: f64,
     pub lon_sector: f64,
     pub data_chunk: Vec<u8>,
-
-    ///
     pub calculated_at_ms: i64,
+    pub kind: String,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, AsChangeset)]
 #[diesel(table_name = crate::schema::objectposition)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct ObjectPositionInsert {
@@ -162,17 +167,28 @@ pub struct ObjectPositionInsert {
     pub lat_sector: f64,
     pub lon_sector: f64,
     pub data_chunk: Vec<u8>,
-
-    ///
     pub calculated_at_ms: i64,
+    pub kind: String,
 }
 
 impl ObjectPositionStored {
-    pub fn available_days(conn: &mut SqliteConnection, lat_lon_snapped: &LatLon) -> Vec<NaiveDate> {
+    pub fn available_days(
+        conn: &mut SqliteConnection,
+        lat_lon_snapped: &LatLon,
+    ) -> Vec<NaiveDate> {
+        Self::available_days_kind(conn, lat_lon_snapped, POSITION_KIND_SOLAR)
+    }
+
+    pub fn available_days_kind(
+        conn: &mut SqliteConnection,
+        lat_lon_snapped: &LatLon,
+        kind_val: &str,
+    ) -> Vec<NaiveDate> {
         use crate::schema::objectposition::dsl::*;
         let results = objectposition
             .filter(lat_sector.eq(lat_lon_snapped.lat))
             .filter(lon_sector.eq(lat_lon_snapped.lon))
+            .filter(kind.eq(kind_val))
             .select(date)
             .distinct()
             .load::<String>(conn)
@@ -184,10 +200,20 @@ impl ObjectPositionStored {
         }
         dates
     }
+
     pub fn read_from_db(
         conn: &mut SqliteConnection,
         date_at: NaiveDate,
         lat_lon_snapped: LatLon,
+    ) -> Vec<ObjectPosition> {
+        Self::read_from_db_kind(conn, date_at, lat_lon_snapped, POSITION_KIND_SOLAR)
+    }
+
+    pub fn read_from_db_kind(
+        conn: &mut SqliteConnection,
+        date_at: NaiveDate,
+        lat_lon_snapped: LatLon,
+        kind_val: &str,
     ) -> Vec<ObjectPosition> {
         use crate::schema::objectposition::dsl::*;
         let target_date: String = date_at.to_string();
@@ -195,14 +221,14 @@ impl ObjectPositionStored {
             .filter(date.eq(target_date))
             .filter(lat_sector.eq(lat_lon_snapped.lat))
             .filter(lon_sector.eq(lat_lon_snapped.lon))
+            .filter(kind.eq(kind_val))
             .select(ObjectPositionStored::as_select())
             .load::<ObjectPositionStored>(conn)
             .expect("Error loading object positions");
         if results.len() > 0 {
             let stored = &results[0].data_chunk;
-            let (decoded, len): (Vec<ObjectPosition>, usize) =
+            let (decoded, _len): (Vec<ObjectPosition>, usize) =
                 bincode::decode_from_slice(stored, bincode::config::standard()).unwrap();
-
             decoded
         } else {
             Vec::new()
@@ -218,28 +244,57 @@ impl ObjectPositionInsert {
         lon_sector: f64,
         op_vec: &Vec<ObjectPosition>,
     ) {
-        println!(
-            "Inserting {} object positions into the database.",
-            op_vec.len()
-        );
-        use crate::schema::objectposition;
-        let now_utc = chrono::Utc::now().timestamp_millis();
-        let encoded: Vec<u8> =
-            bincode::encode_to_vec(&op_vec, bincode::config::standard()).unwrap();
-        // make a vec of OpjectPositionInsert
-        let new_element = ObjectPositionInsert {
-            calculated_at_ms: now_utc,
-            date: date.to_string(),
+        Self::upsert_date(
+            conn,
+            date,
             lat_sector,
             lon_sector,
+            POSITION_KIND_SOLAR,
+            op_vec,
+        );
+    }
+
+    pub fn upsert_date(
+        conn: &mut SqliteConnection,
+        date_at: NaiveDate,
+        lat_sector_val: f64,
+        lon_sector_val: f64,
+        kind_val: &str,
+        op_vec: &Vec<ObjectPosition>,
+    ) {
+        println!(
+            "Upserting {} object positions ({kind_val}) into the database.",
+            op_vec.len()
+        );
+        use crate::schema::objectposition::dsl::*;
+        let now_utc = chrono::Utc::now().timestamp_millis();
+        let encoded: Vec<u8> =
+            bincode::encode_to_vec(op_vec, bincode::config::standard()).unwrap();
+        let new_element = ObjectPositionInsert {
+            calculated_at_ms: now_utc,
+            date: date_at.to_string(),
+            lat_sector: lat_sector_val,
+            lon_sector: lon_sector_val,
             data_chunk: encoded,
+            kind: kind_val.to_string(),
         };
 
-        let q = diesel::insert_into(objectposition::table)
+        // SQLite unique index: (date, lat_sector, lon_sector, kind)
+        diesel::delete(
+            objectposition.filter(
+                date.eq(date_at.to_string())
+                    .and(lat_sector.eq(lat_sector_val))
+                    .and(lon_sector.eq(lon_sector_val))
+                    .and(kind.eq(kind_val)),
+            ),
+        )
+        .execute(conn)
+        .expect("error deleting prior objectposition row");
+
+        let q = diesel::insert_into(objectposition)
             .values(new_element)
-            //.returning(ObjectPositionStored::as_returning())
             .execute(conn)
-            .expect("error saving");
+            .expect("error saving objectposition");
         println!("Inserted {} rows.", q);
     }
 }

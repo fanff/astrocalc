@@ -79,7 +79,7 @@ Maps to domain `NightInfo` via `DateInfo::as_nightinfo`.
 
 ### `objectposition`
 
-Cached sampled positions for a date × sector.
+Cached sampled positions for a date × sector × kind.
 
 | Column | Type | Meaning |
 |--------|------|---------|
@@ -88,8 +88,15 @@ Cached sampled positions for a date × sector.
 | `lat_sector` / `lon_sector` | double | Same sectoring as `dateinfo` |
 | `data_chunk` | binary | Bincode-encoded position payload |
 | `calculated_at_ms` | bigint | When the chunk was written |
+| `kind` | text | `'solar'` (planets/Moon) or `'dso'` (deep-sky); default `'solar'` |
 
-Lookup pattern: snap lat/lon → query by date + sector → decode blob → filter in domain/UI.
+Unique index: `(date, lat_sector, lon_sector, kind)` — one blob per family per night × sector.
+
+Lookup pattern: snap lat/lon → query by date + sector + kind → decode blob → filter in domain/UI.
+
+**DSO merge cache:** `ensure_dso_positions` loads the `kind='dso'` blob, computes only **missing** selected display ids, merges, and rewrites the blob. Selection filters what Daily/Long Term plot; unselected tracks may remain in the blob for reuse. Changing sampling frequency or night definition requires invalidating DSO (and solar) rows for affected nights.
+
+Solar-system writes use `kind='solar'` only (Daily background prefetch: selected day + 10 nights).
 
 ### Position blob (`ObjectPosition`)
 
@@ -97,7 +104,7 @@ Logical fields encoded with bincode (see [src/solarsystemcalc.rs](../src/solarsy
 
 | Field | Meaning |
 |-------|---------|
-| `name` | Object id (e.g. planet name) |
+| `name` | Object id (e.g. planet name or `M31`) |
 | `utc_datetime` | Sample time (UTC) |
 | `date` | Calendar date associated with the night |
 | `ra` / `dec` | Equatorial coordinates |
@@ -132,7 +139,7 @@ Notable fields on `DeepObject`: identifiers (NGC/IC/Messier), `ra` / `dec` strin
 
 `filter_magnitude(max_v_mag)` keeps objects with `v_mag <= max_v_mag` (objects without `v_mag` are dropped).
 
-No DSO rows in SQLite yet — caching strategy is a roadmap decision when positions are computed.
+DSO position samples are stored in `objectposition` with `kind='dso'` (selected-id merge; see above).
 
 ## Sample / unused assets
 

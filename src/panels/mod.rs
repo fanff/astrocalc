@@ -2,6 +2,7 @@ pub mod config;
 pub mod dailysolar;
 pub mod longterm_plot;
 
+#[derive(Clone, Copy, Debug)]
 pub struct LatLon {
     pub lat: f64,
     pub lon: f64,

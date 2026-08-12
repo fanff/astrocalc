@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AstroCalc">
+  <!-- Night disc -->
+  <circle cx="64" cy="64" r="60" fill="#0b1a33"/>
+  <!-- Soft rim -->
+  <circle cx="64" cy="64" r="60" fill="none" stroke="#2a4a73" stroke-width="4"/>
+  <!-- Crescent moon -->
+  <circle cx="52" cy="58" r="28" fill="#e8eef7"/>
+  <circle cx="64" cy="50" r="24" fill="#0b1a33"/>
+  <!-- Star -->
+  <polygon
+    fill="#f0c14a"
+    points="92,36 95.2,44.8 104,46 97,52.2 99.2,61 92,55.8 84.8,61 87,52.2 80,46 88.8,44.8"
+  />
+  <!-- Small accent star -->
+  <circle cx="78" cy="78" r="2.5" fill="#c5d4ea"/>
+  <circle cx="98" cy="70" r="1.8" fill="#c5d4ea"/>
+</svg>

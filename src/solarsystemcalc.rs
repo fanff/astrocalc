@@ -537,7 +537,7 @@ impl ObjectPositionSegments {
                         } else {
                             0
                         };
-                    if duration_minutes > min_duration_minutes {
+                    if duration_minutes >= min_duration_minutes {
                         filtered_segments.push(ObjectSegment(filtered_positions));
                     }
                 }

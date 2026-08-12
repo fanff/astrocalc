@@ -28,6 +28,7 @@ diesel::table! {
         data_chunk -> Binary,
         date -> Text,
         calculated_at_ms -> BigInt,
+        kind -> Text,
     }
 }
 

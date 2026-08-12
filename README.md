@@ -9,21 +9,20 @@ Pick your site, define the parts of the sky you can actually see, then find when
 ## What you can do
 
 - **Set up your site** — place yourself on a map and draw visibility zones for your usable sky (trees, roofs, horizon limits)
-- **Plan solar-system nights** — precompute when planets and the Moon are above your view for a date range
-- **Explore a single night** — sky map and timeline for one evening, filtered by your zones and which objects you care about
+- **Explore a single night** — sky map and timeline for one evening; selecting a date caches that night plus ~10 days ahead in the background
+- **Scan the long term** — multi-night presence overview from cache (objects visible ≥20 minutes in your view), with the same catalog selection as Daily
 - **Check observing conditions** — weather context (clouds, humidity, wind) for the selected location and night
 - **Work offline for setup** — Config map falls back to an embedded vector basemap (countries, French regions, key cities) when the network is unavailable
 
 ## Coming next
 
-- Deep-sky catalogs (Messier, NGC/IC) in the same planning views
-- Multi-night / long-term overviews
+- Deeper magnitude / FOV planning filters shared across object kinds
 - ISS passes and conjunctions with planets or deep-sky targets
 - Telescope field of view, magnitude limits, and expected frame preview
 
 ## Status
 
-Early and actively developed. Solar-system nightly planning and daily visualization are usable today; weather is shown in the daily view. Deep-sky, long-term plots, satellites, and hardware preview are on the roadmap.
+Early and actively developed. Solar-system and deep-sky nightly planning, Daily visualization, Long Term presence overview, and weather in Daily are usable today. Satellites and hardware preview remain on the roadmap.
 
 ## Download
 

@@ -15,9 +15,9 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 | [`src/gui.rs`](../src/gui.rs) | `AstroCalcApp` shell, panel routing, shared session state (lat/lon, view windows, binds) | Deep ephemeris math; keep growing god-object fields in check |
 | [`src/panels/`](../src/panels/) | Screen-level UI: `LatLon`, Config, Daily, Long Term | Reusable plot primitives (those go in widgets) |
 | [`src/panels/config.rs`](../src/panels/config.rs) | Config layout: location map, visibility zones, Save → SQLite | Schema definitions; GeoJSON parsing |
-| [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load/calc day, object flags, weather panel display, compose sky + calendar plots | Weather HTTP; raw Diesel schema details if a repository helper exists |
-| [`src/panels/longterm_plot.rs`](../src/panels/longterm_plot.rs) | Multi-day overview from DB | Duplicate daily filtering logic — share domain filters |
-| [`src/widgets/`](../src/widgets/) | Reusable controls/plots: sky map, polar helpers, view-window zone editor, location map, calendar plot, weather panel, object flags, solar calc button | Opening DB connections; owning app-wide config |
+| [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load cached day, request background prefetch (day+10), object flags, weather panel display, compose sky + calendar plots | Weather HTTP; raw Diesel schema details if a repository helper exists |
+| [`src/panels/longterm_plot.rs`](../src/panels/longterm_plot.rs) | Multi-night presence overview from DB (≥20 min in view; catalog selection; zoomable) | Duplicate daily filtering logic — share domain filters |
+| [`src/widgets/`](../src/widgets/) | Reusable controls/plots: sky map, polar helpers, view-window zone editor, location map, calendar plot, weather panel, catalog selection | Opening DB connections; owning app-wide config |
 | [`src/widgets/location_map.rs`](../src/widgets/location_map.rs) | OSM `HttpTiles` + offline vector basemap, click marker, online probe / mode | Config Save; view-window editing |
 | [`src/widgets/vector_basemap.rs`](../src/widgets/vector_basemap.rs) | Parse/paint embedded GeoJSON (countries, FR regions, places) via walkers `Plugin` | HTTP tiles; config persistence |
 
@@ -27,7 +27,7 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 |--------|------|--------|
 | [`src/config.rs`](../src/config.rs) | `AppSettings`, `ViewWindow`, validation, Paris defaults | Ephemeris; UI layout; Diesel I/O |
 | [`src/solarsystemcalc.rs`](../src/solarsystemcalc.rs) | Planet/Moon (and Sun) ephemeris, night intervals, sampling, `ObjectPosition` encode/decode, segment helpers | egui; weather; DSO catalog parsing |
-| [`src/deepsky/`](../src/deepsky/) | Embedded catalog load, magnitude filter, DSO position calculation | Solar-system planet formulas; UI |
+| [`src/deepsky/`](../src/deepsky/) | Embedded catalog load, magnitude filter, DSO position calculation, `ensure_dso_positions` cache merge | Solar-system planet formulas; UI |
 | [`src/deepsky/data.rs`](../src/deepsky/data.rs) | `DeepObject`, `DeepSkyCatalog`, `CATALOG` | Alt-az conversion (belongs beside calc in `deepsky/mod.rs` or shared coords) |
 | *future `visibility`* | Compose view windows, mag limit, FOV, weather thresholds | Plotting |
 | *future `satellites` / `conjunctions`* | ISS passes, conjunction events | Photo overlay rendering |
@@ -48,6 +48,7 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 | `src/deepsky/ngc-ic-messier-catalog.csv` | Embedded DSO catalog |
 | `database.db` | Local SQLite (settings + ephemeris cache) |
 | `assets/vector_map/` | Offline vector basemap GeoJSON (countries, France regions, places) |
+| `assets/icon.svg` / `assets/icon.png` | App icon (SVG source; PNG embedded for the window) |
 | `my_weather_app/` | Weather YAML cache directory |
 | `background/` | Location photos for future overlay |
 

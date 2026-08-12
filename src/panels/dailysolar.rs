@@ -1,13 +1,11 @@
-use crate::deepsky::calculate_deep_sky_positions;
+use crate::deepsky::ensure_dso_positions;
 use crate::models::ObjectPositionStored;
 use crate::solarsystemcalc::NightInfo;
 use crate::weather_cache::WeatherSnapshot;
 use crate::{
     config::ViewWindow,
     models::DateInfo,
-    solarsystemcalc::{
-        ObjectPosition, ObjectPositionSegments, calculate_solar_system_positions,
-    },
+    solarsystemcalc::{ObjectPosition, ObjectPositionSegments},
     widgets::{
         CatalogSelection, calendar_plot::CalPlot, sky_map::SkyMapPlot, weather::WeatherPanel,
     },
@@ -20,6 +18,11 @@ use egui_extras::{DatePickerButton, Size, StripBuilder};
 use std::collections::HashMap;
 
 use crate::panels::LatLon;
+
+/// Nights to precompute ahead of the selected Daily date (inclusive window length).
+pub const DAILY_PREFETCH_DAY_COUNT: i64 = 10;
+pub const SAMPLE_FREQ_MINUTES: i64 = 10;
+
 pub struct DailySolar {
     pub date: NaiveDate,
     pub lat_lon: LatLon,
@@ -38,7 +41,11 @@ pub struct DailySolar {
     pub local_tz: Tz,
     /// Set by Weather Refresh button; app shell clears and forces a fetch.
     pub weather_force_refresh: bool,
-    /// Cached DSO type labels from last deep-sky calc.
+    /// Ask app shell to run background ephemeris prefetch (selected day + window).
+    pub request_ephemeris_prefetch: bool,
+    /// True while app-shell Bind is computing solar positions.
+    pub ephemeris_pending: bool,
+    /// Cached DSO type labels from last deep-sky load.
     dso_types: HashMap<String, String>,
     /// Weather section expanded (folds vertically).
     pub weather_open: bool,
@@ -58,7 +65,7 @@ impl DailySolar {
             catalog_select: CatalogSelection::default(),
             sky_map: SkyMapPlot::new(),
             cal_plot: CalPlot::new(),
-            view_windows: view_windows,
+            view_windows,
             positions: None,
             dateinfo: None,
             database_connection: database_connection_str,
@@ -67,6 +74,8 @@ impl DailySolar {
             weather_error: None,
             local_tz: Tz::UTC,
             weather_force_refresh: false,
+            request_ephemeris_prefetch: true,
+            ephemeris_pending: false,
             dso_types: HashMap::new(),
             weather_open: true,
             radar_open: true,
@@ -78,38 +87,50 @@ impl DailySolar {
         self.cal_plot.output_timezone = tz;
         self.sky_map.local_tz = tz;
     }
+
+    /// Load cached solar (+ DSO) for the selected day. Does not compute solar ephemeris.
+    /// When `request_prefetch` is true, ask the app shell to fill selected day + 10 nights.
     pub fn refresh_positions(&mut self) {
+        self.refresh_positions_inner(true);
+    }
+
+    pub fn reload_cached_only(&mut self) {
+        self.refresh_positions_inner(false);
+    }
+
+    fn refresh_positions_inner(&mut self, request_prefetch: bool) {
         let snapped_lat_lon = self.lat_lon.snap(2);
         println!(
             "Refreshing positions for date: {} at snapped {} {}",
             self.date, snapped_lat_lon.lat, snapped_lat_lon.lon
         );
-        println!("db connection string: {}", self.database_connection);
         let mut conn: SqliteConnection =
             SqliteConnection::establish(&self.database_connection).unwrap();
-        let available_days = ObjectPositionStored::available_days(&mut conn, &snapped_lat_lon);
-        if !available_days.contains(&self.date) {
-            calculate_solar_system_positions(
-                self.date,
-                snapped_lat_lon.lat,
-                snapped_lat_lon.lon,
-                10,
-                2,
-                Some(self.database_connection.clone()),
-            );
+
+        match DateInfo::from_db(&mut conn, self.date, &snapped_lat_lon) {
+            Some(date_info) => {
+                self.dateinfo = Some(date_info.as_nightinfo());
+                let positions =
+                    ObjectPositionStored::read_from_db(&mut conn, self.date, snapped_lat_lon);
+                self.positions = if positions.is_empty() {
+                    None
+                } else {
+                    Some(positions)
+                };
+                self.refresh_dso_positions(&mut conn);
+            }
+            None => {
+                self.dateinfo = None;
+                self.positions = None;
+                self.dso_types.clear();
+            }
         }
-        let date_info = DateInfo::from_db(&mut conn, self.date, &snapped_lat_lon).unwrap();
-        self.dateinfo = Some(date_info.as_nightinfo());
-        let positions = ObjectPositionStored::read_from_db(&mut conn, self.date, snapped_lat_lon);
-        if positions.len() == 0 {
-            self.positions = None;
-        } else {
-            self.positions = Some(positions);
+        if request_prefetch {
+            self.request_ephemeris_prefetch = true;
         }
-        self.refresh_dso_positions();
     }
 
-    fn refresh_dso_positions(&mut self) {
+    fn refresh_dso_positions(&mut self, conn: &mut SqliteConnection) {
         self.dso_types.clear();
         let Some(night) = self.dateinfo.clone() else {
             return;
@@ -119,8 +140,14 @@ impl DailySolar {
             return;
         }
         let snapped = self.lat_lon.snap(2);
-        let (dso_pos, types) =
-            calculate_deep_sky_positions(&night, snapped.lat, snapped.lon, 10, &ids);
+        let (dso_pos, types) = ensure_dso_positions(
+            conn,
+            &night,
+            snapped.lat,
+            snapped.lon,
+            SAMPLE_FREQ_MINUTES,
+            &ids,
+        );
         self.dso_types = types;
         if dso_pos.is_empty() {
             return;
@@ -133,8 +160,6 @@ impl DailySolar {
 }
 impl egui::Widget for &mut DailySolar {
     fn ui(self, ui: &mut egui::Ui) -> Response {
-        // horizontal() takes the full row width, so nest a shrink-to-fit bar in a
-        // centered column — otherwise << / date / >> stick to the left.
         ui.vertical_centered(|ui| {
             ui.allocate_ui_with_layout(
                 egui::vec2(280.0, ui.spacing().interact_size.y),
@@ -156,7 +181,15 @@ impl egui::Widget for &mut DailySolar {
             );
         });
 
-        // Weather: explicit bar that folds the panel vertically.
+        if self.ephemeris_pending {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Caching ephemeris (selected night + 10 days)…");
+            });
+        } else if self.dateinfo.is_none() {
+            ui.label("No cached data for this night yet — calculating in background…");
+        }
+
         let weather_label = if self.weather_open {
             "▼  Weather"
         } else {
@@ -183,17 +216,15 @@ impl egui::Widget for &mut DailySolar {
         ui.add(&mut self.catalog_select);
         let dso_after = self.catalog_select.selected_dso_ids();
         if dso_before != dso_after {
-            // Rebuild planet positions from DB then re-apply DSO selection.
             self.refresh_positions();
         }
 
         if let Some(object_pos) = &self.positions {
-            let some_position = ObjectPositionSegments::from_positions(&object_pos, 10)
-                .filter_view(
-                    &self.view_windows,
-                    60,
-                    &self.catalog_select.selected_object_names(),
-                );
+            let some_position = ObjectPositionSegments::from_positions(object_pos, 10).filter_view(
+                &self.view_windows,
+                60,
+                &self.catalog_select.selected_object_names(),
+            );
 
             let mut types = CatalogSelection::planet_type_map();
             types.extend(self.dso_types.clone());
@@ -202,9 +233,12 @@ impl egui::Widget for &mut DailySolar {
             self.cal_plot.positions_map = some_position.clone();
             self.cal_plot.object_types = types;
             self.sky_map.op_segs = some_position;
+        } else {
+            self.cal_plot.dateinfo = self.dateinfo.clone();
+            self.cal_plot.positions_map = ObjectPositionSegments::new();
+            self.sky_map.op_segs = ObjectPositionSegments::new();
         }
 
-        // Left edge: Radar fold button; then optional radar column; timeline fills the rest.
         let plots_h = ui.available_height().max(160.0);
         let plots_w = ui.available_width();
         let fold_btn_w = 28.0;
@@ -220,7 +254,6 @@ impl egui::Widget for &mut DailySolar {
             egui::vec2(plots_w, plots_h),
             egui::Layout::left_to_right(egui::Align::TOP),
             |ui| {
-                // Vertical fold control on the left of the radar.
                 let radar_btn = if self.radar_open {
                     "◀\nR\na\nd\na\nr"
                 } else {

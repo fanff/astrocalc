@@ -19,11 +19,10 @@ Integrate the existing Open-Meteo + YAML cache into the desktop UI cleanly.
 
 Complete the DSO path from catalog to sky views.
 
-- Parse RA/Dec strings (today hardcoded to `0.0` in `calculate_deep_sky_positions`)
-- Finish alt-az conversion for the observer
-- Apply magnitude filtering from catalog `v_mag`
-- Wire into Daily (then Long Term) with object selection
-- Define SQLite/cache strategy for DSO positions (reuse blob pipeline or versioned extension)
+- [x] Parse RA/Dec strings and alt-az conversion for the observer
+- [ ] Apply magnitude filtering from catalog `v_mag` as a planning constraint (catalog UI mag limits exist)
+- [x] Wire into Daily and Long Term with object selection
+- [x] SQLite/cache strategy: `objectposition.kind = 'dso'` blobs with selected-id merge via `ensure_dso_positions`
 
 **Depends on:** [src/deepsky/](../src/deepsky/).
 
@@ -33,7 +32,8 @@ Close gaps in the solar-system family.
 
 - Complete Sun handling alongside planets and Moon
 - Verify magnitudes, phase (Moon), and night/day edge cases
-- Finish **Long Term** panel plotting from DB (panel shell exists; plot body empty)
+- [x] **Long Term** panel: presence overview from DB (date × object dots, ≥20 min in view; no weather)
+- [x] Solar System calc panel removed — Daily prefetches selected night + 10 days in background
 - Keep Daily and Long Term on the same position types and filters
 
 **Depends on:** [src/solarsystemcalc.rs](../src/solarsystemcalc.rs), [src/panels/longterm_plot.rs](../src/panels/longterm_plot.rs).
@@ -64,7 +64,7 @@ Settings-driven constraints applied uniformly across object kinds.
 Not user-facing features, but required so the priority list does not rot the tree:
 
 - Extract domain/infra behind `lib.rs` when DSO/ISS share types
-- Fix window title (`"egui Demo"` → AstroCalc)
+- [x] Fix window title (`"egui Demo"` → AstroCalc) and app icon
 - Migration/schema hygiene (empty third migration; naming leftovers)
 - Cull unused deps (`clap`, `suncalc` if still unused)
 - Keep [modules.md](modules.md) and this roadmap updated when a major feature lands

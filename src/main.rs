@@ -6,6 +6,7 @@ use crate::weather_cache::WeatherCache;
 use diesel::{Connection, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use dotenvy::dotenv;
+use eframe::egui;
 use std::env;
 
 mod gui;
@@ -48,9 +49,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         2,                             // coord precision: ~1 km
     )?;
 
-    let options = eframe::NativeOptions::default();
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
+        .unwrap_or_default();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("AstroCalc")
+            .with_icon(icon),
+        ..Default::default()
+    };
     eframe::run_native(
-        "egui Demo",
+        "AstroCalc",
         options,
         Box::new(move |cc| {
             Ok(Box::new(AstroCalcApp::new(

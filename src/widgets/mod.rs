@@ -4,7 +4,6 @@ pub mod catalog_select;
 pub mod location_map;
 pub mod sky_map;
 pub mod sky_polar;
-pub mod solarcalc;
 pub mod vector_basemap;
 pub mod view_window_editor;
 pub mod weather;

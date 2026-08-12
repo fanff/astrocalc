@@ -4,11 +4,10 @@ use crate::solarsystemcalc::{
     NightInfo, ObjectPositionSegments, darken_for_bar_fill, get_object_color,
 };
 use crate::timezone_util::{format_axis_local, format_axis_utc, format_utc_local_block};
-use chrono::TimeZone;
-use chrono::{DateTime, NaiveTime};
+use chrono::{DateTime, Duration, Timelike};
 use chrono_tz::Tz;
-use egui::{Align2, Color32, Response, RichText, Stroke, Vec2b};
-use egui_plot::{AxisHints, Plot, PlotPoint, Polygon, Text, VLine};
+use egui::{Align2, Color32, Response, RichText, Sense, Vec2b};
+use egui_plot::{AxisHints, Plot, PlotBounds, PlotPoint, Polygon, Text, VLine};
 
 pub struct CalPlot {
     pub dateinfo: Option<NightInfo>,
@@ -95,29 +94,30 @@ impl egui::Widget for &mut CalPlot {
                                     _range: &std::ops::RangeInclusive<f64>| {
             format_axis_local(value.value as i64, output_timezone)
         };
+
         let x_grid = move |input: egui_plot::GridInput| {
             let mut marks = Vec::new();
             let start = input.bounds.0;
             let end = input.bounds.1;
-            let day_start = DateTime::from_timestamp_millis(start as i64)
-                .unwrap()
-                .naive_utc()
-                .date();
-            let day_end = DateTime::from_timestamp_millis(end as i64)
-                .unwrap()
-                .naive_utc()
-                .date();
-            let mut current_day = day_start;
-            while current_day <= day_end {
-                let dt_start = output_timezone.from_utc_datetime(
-                    &current_day.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()),
-                );
-                let timestamp_ms = dt_start.timestamp_millis() as f64;
+            let Some(start_dt) = DateTime::from_timestamp_millis(start as i64) else {
+                return marks;
+            };
+            let Some(end_dt) = DateTime::from_timestamp_millis(end as i64) else {
+                return marks;
+            };
+            // Align to next UTC hour boundary at or after start.
+            let mut t = start_dt - Duration::minutes(start_dt.minute() as i64)
+                - Duration::seconds(start_dt.second() as i64)
+                - Duration::nanoseconds(start_dt.nanosecond() as i64);
+            if t < start_dt {
+                t += Duration::hours(1);
+            }
+            while t <= end_dt {
                 marks.push(egui_plot::GridMark {
-                    value: timestamp_ms,
-                    step_size: 86400000.0,
+                    value: t.timestamp_millis() as f64,
+                    step_size: 3_600_000.0,
                 });
-                current_day = current_day.succ_opt().unwrap();
+                t += Duration::hours(1);
             }
             marks
         };
@@ -140,6 +140,9 @@ impl egui::Widget for &mut CalPlot {
             .allow_drag(false)
             .allow_scroll(false)
             .allow_boxed_zoom(false)
+            .allow_axis_zoom_drag(false)
+            .sense(Sense::hover())
+            .auto_bounds(false)
             .custom_x_axes(vec![
                 AxisHints::new_x().formatter(utc_formatter),
                 AxisHints::new_x().formatter(local_formatter),
@@ -151,13 +154,16 @@ impl egui::Widget for &mut CalPlot {
             let Some(ni) = self.dateinfo.as_ref() else {
                 return;
             };
+            let xmin = ni.night_start_ms.timestamp_millis() as f64;
+            let xmax = ni.night_end_ms.timestamp_millis() as f64;
+
             plot_ui.vline(VLine::new(
-                "night",
-                ni.night_start_ms.timestamp_millis() as f64,
+                "night_start",
+                xmin,
             ));
             plot_ui.vline(VLine::new(
-                "night",
-                ni.night_end_ms.timestamp_millis() as f64,
+                "night_end",
+                xmax,
             ));
 
             // Faintest first (low y); brightest last (high y = top of chart).
@@ -172,6 +178,12 @@ impl egui::Widget for &mut CalPlot {
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| a.0.cmp(&b.0))
             });
+
+            let row_count = rows.len().max(1) as f64;
+            plot_ui.set_plot_bounds(PlotBounds::from_min_max(
+                [xmin, -0.05],
+                [xmax, row_count + 0.05],
+            ));
 
             let mut obj_index = 0.0;
             for (name, row_mag) in rows {
@@ -209,7 +221,7 @@ impl egui::Widget for &mut CalPlot {
                     plot_ui.polygon(
                         Polygon::new(name.clone(), points)
                             .fill_color(fill)
-                            .stroke(Stroke::new(0.0, fill)),
+                            .stroke(egui::Stroke::new(0.0, fill)),
                     );
 
                     let mid_x = (min_x + max_x) * 0.5;
