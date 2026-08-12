@@ -15,6 +15,8 @@ diesel_migrations = "2.3.2"
 # Windows has no system sqlite3.lib by default; bundle SQLite into the binary.
 libsqlite3-sys = { version = "0.35", features = ["bundled"] }
 dotenvy = "0.15.7"
+# Floor for polars transitive dep: 1.5.2 breaks on Rust 1.97+ (unsafe transmute).
+ethnum = "1.5.3"
 eframe = "0.33.0"
 egui = "0.33.0"
 egui-async = "0.2.3"
