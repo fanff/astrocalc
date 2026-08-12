@@ -4,6 +4,8 @@ A desktop observation planner for night-sky photography and visual astronomy.
 
 Pick your site, define the parts of the sky you can actually see, then find when targets are worth looking at — without recomputing the night every time you open the app.
 
+![Daily view — weather, sky map, and visibility timeline](doc/screenshots/dailyview.png)
+
 ## What you can do
 
 - **Set up your site** — place yourself on a map and draw visibility zones for your usable sky (trees, roofs, horizon limits)
@@ -22,6 +24,10 @@ Pick your site, define the parts of the sky you can actually see, then find when
 ## Status
 
 Early and actively developed. Solar-system nightly planning and daily visualization are usable today; weather is shown in the daily view. Deep-sky, long-term plots, satellites, and hardware preview are on the roadmap.
+
+## Download
+
+Prebuilt binaries for Windows, macOS (Apple Silicon), and Linux are published on the [Latest release](https://github.com/fanff/astrocalc/releases/latest) page whenever `main` is updated. Grab the archive for your OS, extract it, and run the binary.
 
 ## Run
 
