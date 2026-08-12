@@ -1,0 +1,146 @@
+# Data model
+
+Sources of truth for configuration, cached ephemeris, weather, and catalogs.
+
+## Application settings (`AppSettings`)
+
+Persisted in SQLite table `app_settings` (singleton row `id = 1`). Domain type in [src/config.rs](../src/config.rs); load/seed/upsert in [src/models.rs](../src/models.rs).
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `lat` | `f64` | Observer latitude (degrees) |
+| `lon` | `f64` | Observer longitude (degrees) |
+| `view_windows` | `Vec<ViewWindow>` | Az/alt rectangles of usable sky (stored as JSON text) |
+
+Connection string is **not** stored here — use `DATABASE_URL` (see Environment).
+
+### First-run defaults
+
+When `app_settings` has no row, the app seeds:
+
+| Setting | Value |
+|---------|--------|
+| Location | Paris center `48.8566°N`, `2.3522°E` |
+| View window | Wrap-north ≈350°: az `[185 → 175]`, alt `[5, 80]` |
+
+### ViewWindow
+
+| Field | Meaning |
+|-------|---------|
+| `min_az_deg` / `max_az_deg` | Azimuth bounds in degrees, typically `[0, 360]`. If `min_az > max_az`, the sector **wraps across north**. |
+| `min_alt_deg` / `max_alt_deg` | Altitude bounds (`0 ≤ min < max ≤ 90`) |
+
+`contains(az, alt)` is the geometric membership test used when filtering tracks (wrap-aware).
+
+Edited visually in Config via the polar sky circle ([`src/widgets/view_window_editor.rs`](../src/widgets/view_window_editor.rs)): same N-up projection as Daily (`r = 90 − alt`). Drag yellow corner handles to reshape a zone; **Add zone** creates a default sector.
+
+Observer lat/lon is set from the Config location map ([`src/widgets/location_map.rs`](../src/widgets/location_map.rs)): OpenStreetMap when online, otherwise an embedded vector basemap ([`src/widgets/vector_basemap.rs`](../src/widgets/vector_basemap.rs) + `assets/vector_map/*.geojson`). Layout lives in [`src/panels/config.rs`](../src/panels/config.rs); **Save** upserts `app_settings`.
+
+### Environment
+
+| Variable | Role |
+|----------|------|
+| `DATABASE_URL` | Diesel connection string (e.g. `database.db` via `.env`) |
+
+### Planned settings extensions
+
+Not in schema yet; add here when implementing roadmap items 4 and 6:
+
+- Limit magnitude, FOV (deg or arcmin)
+- Hardware profile (aperture, focal length, sensor)
+- Overlay image path(s) tied to site / view window
+
+## SQLite (Diesel)
+
+Schema in [src/schema.rs](../src/schema.rs); row types in [src/models.rs](../src/models.rs). Migrations under `migrations/` (embedded and applied at startup).
+
+### `app_settings`
+
+Singleton observer + view configuration.
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `id` | integer PK | Always `1` (`CHECK (id = 1)`) |
+| `lat` / `lon` | double | Observer coordinates |
+| `view_windows_json` | text | JSON array of `ViewWindow` |
+
+### `dateinfo`
+
+One night span per calendar date × geo sector.
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `id` | integer PK | Surrogate key |
+| `date` | text | `YYYY-MM-DD` |
+| `lat_sector` / `lon_sector` | double | Snapped observer coordinates |
+| `night_start_ms` / `night_end_ms` | bigint | Night bounds as UTC epoch milliseconds |
+
+Maps to domain `NightInfo` via `DateInfo::as_nightinfo`.
+
+### `objectposition`
+
+Cached sampled positions for a date × sector.
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `id` | integer PK | Surrogate key |
+| `date` | text | `YYYY-MM-DD` |
+| `lat_sector` / `lon_sector` | double | Same sectoring as `dateinfo` |
+| `data_chunk` | binary | Bincode-encoded position payload |
+| `calculated_at_ms` | bigint | When the chunk was written |
+
+Lookup pattern: snap lat/lon → query by date + sector → decode blob → filter in domain/UI.
+
+### Position blob (`ObjectPosition`)
+
+Logical fields encoded with bincode (see [src/solarsystemcalc.rs](../src/solarsystemcalc.rs)):
+
+| Field | Meaning |
+|-------|---------|
+| `name` | Object id (e.g. planet name) |
+| `utc_datetime` | Sample time (UTC) |
+| `date` | Calendar date associated with the night |
+| `ra` / `dec` | Equatorial coordinates |
+| `altitude` / `azimuth` | Local horizontal frame (degrees) |
+| `magnitude` | Apparent magnitude |
+| `distance` | Distance (AU-scale for planets) |
+| `phase_ratio` | Illuminated fraction (Moon-relevant) |
+
+Chunks are typically `Vec<ObjectPosition>` (or segmented wrappers used when plotting continuous visibility). Changing the encode layout is a **breaking cache change** — bump a version or clear DB.
+
+### Geo sector key
+
+Coordinates rounded to a fixed decimal precision (aligned with weather cache, often 2 decimals). All DB reads/writes for a session should use the same snap function.
+
+## Weather cache
+
+Implemented in [src/weather_cache.rs](../src/weather_cache.rs).
+
+- Directory: `my_weather_app/` (created at startup)
+- Freshness: configurable (currently 30 minutes in `main`)
+- Files: YAML named roughly `{lat}_{lon}_{unix_ts}.yaml` for snapped location
+- Payload: `CachedForecast { location, fetched_at, data }` where `data` wraps API YAML (`ForecastData.yaml_content`)
+- Hourly variables requested: `temperature_2m`, `cloud_cover`, `visibility`, `relative_humidity_2m`, `wind_speed_10m`, `wind_direction_10m` (UTC)
+- UI-facing type: `WeatherSnapshot { snapped, fetched_at, hourly: Vec<HourlyWeatherPoint> }` returned by `get_weather`
+- Daily renders via [src/widgets/weather.rs](../src/widgets/weather.rs); HTTP stays in `AstroCalcApp` + `egui_async::Bind`
+
+## Deep-sky catalog
+
+Embedded CSV: [src/deepsky/ngc-ic-messier-catalog.csv](../src/deepsky/ngc-ic-messier-catalog.csv), loaded once via `once_cell::Lazy` in [src/deepsky/data.rs](../src/deepsky/data.rs).
+
+Notable fields on `DeepObject`: identifiers (NGC/IC/Messier), `ra` / `dec` strings, sizes, `v_mag` (and other bands), constellation, notes.
+
+`filter_magnitude(max_v_mag)` keeps objects with `v_mag <= max_v_mag` (objects without `v_mag` are dropped).
+
+No DSO rows in SQLite yet — caching strategy is a roadmap decision when positions are computed.
+
+## Sample / unused assets
+
+- `background/raw_paris/` — location JPEGs intended for overlay; not referenced by code
+- `weather_output.yaml` — sample/output artifact outside the structured cache API
+
+## Extension guidelines
+
+- Prefer new **settings columns / JSON fields** for user settings; new **tables or blob versions** for large computed series.
+- Conjunctions and ISS passes may need event tables (start/end, angular separation) rather than overloading `objectposition` without a type discriminant.
+- Always document cache invalidation when sector precision, night definition, or blob layout changes.

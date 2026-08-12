@@ -1,0 +1,26 @@
+# Rust
+/target/
+
+# Local env / secrets
+.env
+
+# App runtime data (generated locally)
+config_output.yaml
+database.db
+*.db
+*.sqlite
+*.sqlite3
+my_weather_app/
+weather_output.yaml
+
+# Personal location photos (keep on disk only)
+background/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~
