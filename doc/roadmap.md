@@ -48,9 +48,14 @@ Settings-driven constraints applied uniformly across object kinds.
 
 ### 5. ISS view and conjunction
 
-- **Raw mode:** ISS passes over the site (alt-az tracks in view windows)
-- **Conjunction mode:** ISS near a chosen body / deep-sky target within angular criteria
-- Cache/pass listing strategy; avoid blocking UI on TLE/network updates
+- [x] **Visible (sunlit) passes:** dusk/dawn ISS when sunlit and sky dark; view-window filter; TLE from Celestrak + on-disk cache; dedicated **ISS** panel (~60-day list)
+- [x] **Sun / Moon disk transit / near-miss:** sub-second refine; TLE freshness warnings (corridor ~5–10 km)
+- [x] **Brightness / quality:** phase angle + approximate magnitude (range/phase/airmass); duration = sunlit+dark visible window; Bortle (Config) + cloud labels from weather forecast (advisory, not hard filters)
+- Accuracy: SGP4 + fresh TLE is enough for naked-eye passes; disk transits need TLE ≪12 h and full-precision lat/lon (not 0.01° sector)
+- Cache: `iss_events` table + `my_tle_cache/`; invalidate on TLE refresh / site change
+- [ ] **Conjunction mode:** ISS near a chosen planet / deep-sky target (angular criteria) — follow-on
+
+**Depends on:** [src/satellites/](../src/satellites/), ISS panel [src/panels/iss.rs](../src/panels/iss.rs).
 
 ### 6. Telescope hardware and expected picture preview
 

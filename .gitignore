@@ -11,6 +11,7 @@ database.db
 *.sqlite
 *.sqlite3
 my_weather_app/
+my_tle_cache/
 weather_output.yaml
 
 # Personal location photos (keep on disk only)

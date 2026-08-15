@@ -1,6 +1,6 @@
 //! Config panel: observer location map + visibility zones + save to SQLite.
 
-use egui::{Align, Color32, Layout, Ui, Vec2};
+use egui::{Align, Color32, Layout, Slider, Ui, Vec2};
 
 use crate::config::{AppSettings, ViewWindow};
 use crate::models::AppSettingsRow;
@@ -15,6 +15,7 @@ pub struct ConfigPanel<'a> {
     pub timezone_name: &'a str,
     pub database_url: &'a str,
     pub view_windows: &'a mut Vec<ViewWindow>,
+    pub bortle_class: &'a mut u8,
     pub zone_editor: &'a mut ViewWindowEditorState,
     pub location_map: &'a mut LocationMap,
 }
@@ -30,6 +31,7 @@ impl ConfigPanel<'_> {
             lat: *self.lat,
             lon: *self.long,
             view_windows: self.view_windows.clone(),
+            bortle_class: *self.bortle_class,
         };
         let can_save = settings.is_valid();
 
@@ -72,6 +74,12 @@ impl ConfigPanel<'_> {
             ui.weak(self.location_map.status_label());
         });
 
+        ui.horizontal(|ui| {
+            ui.label("Sky brightness (Bortle):");
+            ui.add(Slider::new(self.bortle_class, 1..=9).step_by(1.0));
+            ui.weak(bortle_hint(*self.bortle_class));
+        });
+
         ui.separator();
 
         let mut location_changed = false;
@@ -107,5 +115,19 @@ impl ConfigPanel<'_> {
         });
 
         location_changed
+    }
+}
+
+fn bortle_hint(class: u8) -> &'static str {
+    match class {
+        1 => "excellent dark sky",
+        2 => "typical truly dark",
+        3 => "rural sky",
+        4 => "rural/suburban",
+        5 => "suburban",
+        6 => "bright suburban",
+        7 => "suburban/urban",
+        8 => "city sky",
+        _ => "inner city",
     }
 }

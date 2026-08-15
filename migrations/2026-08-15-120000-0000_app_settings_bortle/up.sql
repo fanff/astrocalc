@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD COLUMN `bortle_class` INTEGER NOT NULL DEFAULT 5;

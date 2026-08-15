@@ -6,6 +6,7 @@ diesel::table! {
         lat -> Double,
         lon -> Double,
         view_windows_json -> Text,
+        bortle_class -> Integer,
     }
 }
 
@@ -32,4 +33,24 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(app_settings, dateinfo, objectposition,);
+diesel::table! {
+    iss_events (id) {
+        id -> Integer,
+        kind -> Text,
+        lat -> Double,
+        lon -> Double,
+        tle_epoch_ms -> BigInt,
+        computed_at_ms -> BigInt,
+        start_ms -> BigInt,
+        end_ms -> BigInt,
+        peak_ms -> BigInt,
+        payload_json -> Text,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(
+    app_settings,
+    dateinfo,
+    objectposition,
+    iss_events,
+);

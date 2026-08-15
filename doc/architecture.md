@@ -70,8 +70,8 @@ Grow a closed set of object families carefully. Prefer shared time/position/segm
 |------|----------|--------|
 | SolarSystem | Sun, Moon, planets | Implemented path today (Sun incomplete) |
 | DeepSky | NGC/IC/Messier | Catalog present; pipeline incomplete |
-| Satellite | ISS | Roadmap |
-| Conjunction | ISS vs body / body vs body | Roadmap; derived events, not raw tracks alone |
+| Satellite | ISS | Visible passes + Sun/Moon disk events (`src/satellites/`) |
+| Conjunction | ISS vs body / body vs body | Roadmap; derived events beyond disk transit |
 
 Presentation features (photo overlay, expected frame preview) consume the same domain positions; they must not define a separate ephemeris path.
 
@@ -83,7 +83,7 @@ Presentation features (photo overlay, expected frame preview) consume the same d
 
 ## Configuration surface
 
-User-facing durable settings (observer lat/lon, view windows) live in SQLite (`app_settings`). Connection path and secrets stay in env (`.env` → `DATABASE_URL`).
+User-facing durable settings (observer lat/lon, view windows, Bortle class) live in SQLite (`app_settings`). Connection path and secrets stay in env (`.env` → `DATABASE_URL`).
 
 Extend settings for FOV, limit magnitude, hardware profile, overlay image paths — **do not hardcode** these in panels. Panel state may hold ephemeral UI values; persistence goes through the settings row or other DB tables.
 

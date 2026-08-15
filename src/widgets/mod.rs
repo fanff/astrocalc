@@ -1,6 +1,7 @@
 use egui::Response;
 pub mod calendar_plot;
 pub mod catalog_select;
+pub mod iss_panel;
 pub mod location_map;
 pub mod sky_map;
 pub mod sky_polar;

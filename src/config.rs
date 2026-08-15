@@ -123,6 +123,13 @@ pub struct AppSettings {
     pub lat: f64,
     pub lon: f64,
     pub view_windows: Vec<ViewWindow>,
+    /// Bortle dark-sky class 1 (excellent) … 9 (inner city). Default 5 (suburban).
+    #[serde(default = "default_bortle_class")]
+    pub bortle_class: u8,
+}
+
+fn default_bortle_class() -> u8 {
+    5
 }
 
 impl AppSettings {
@@ -132,6 +139,7 @@ impl AppSettings {
             lat: 48.8566,
             lon: 2.3522,
             view_windows: vec![ViewWindow::paris_north_almost_360()],
+            bortle_class: 5,
         }
     }
 
@@ -140,6 +148,9 @@ impl AppSettings {
             return false;
         }
         if self.lon < -180.0 || self.lon > 180.0 {
+            return false;
+        }
+        if !(1..=9).contains(&self.bortle_class) {
             return false;
         }
         if self.view_windows.is_empty() {
@@ -152,13 +163,19 @@ impl AppSettings {
         serde_json::to_string(&self.view_windows)
     }
 
-    pub fn from_parts(lat: f64, lon: f64, view_windows_json: &str) -> Result<Self, String> {
+    pub fn from_parts(
+        lat: f64,
+        lon: f64,
+        view_windows_json: &str,
+        bortle_class: u8,
+    ) -> Result<Self, String> {
         let view_windows: Vec<ViewWindow> = serde_json::from_str(view_windows_json)
             .map_err(|e| format!("invalid view_windows_json: {e}"))?;
         Ok(Self {
             lat,
             lon,
             view_windows,
+            bortle_class: bortle_class.clamp(1, 9),
         })
     }
 }
@@ -194,7 +211,7 @@ mod tests {
     fn view_windows_json_round_trip() {
         let s = AppSettings::paris_defaults();
         let json = s.view_windows_json().unwrap();
-        let restored = AppSettings::from_parts(s.lat, s.lon, &json).unwrap();
+        let restored = AppSettings::from_parts(s.lat, s.lon, &json, s.bortle_class).unwrap();
         assert_eq!(s, restored);
     }
 
@@ -204,6 +221,7 @@ mod tests {
             lat: 48.0,
             lon: 2.0,
             view_windows: vec![],
+            bortle_class: 5,
         };
         assert!(!s.is_valid());
     }

@@ -17,6 +17,7 @@ mod solarsystemcalc;
 mod timezone_util;
 mod weather_cache;
 mod deepsky;
+mod satellites;
 mod widgets;
 use crate::deepsky::data::CATALOG;
 
@@ -48,6 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chrono::Duration::minutes(30), // freshness: 30 minutes
         2,                             // coord precision: ~1 km
     )?;
+    let tle_cache = crate::satellites::TleCache::new(
+        "my_tle_cache",
+        crate::satellites::DEFAULT_TLE_FRESHNESS,
+    )?;
 
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
         .unwrap_or_default();
@@ -66,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 settings,
                 database_url,
                 weather_cache,
+                tle_cache,
             )))
         }),
     )

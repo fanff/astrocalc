@@ -307,6 +307,7 @@ pub struct AppSettingsRow {
     pub lat: f64,
     pub lon: f64,
     pub view_windows_json: String,
+    pub bortle_class: i32,
 }
 
 #[derive(Insertable, AsChangeset)]
@@ -317,11 +318,17 @@ pub struct AppSettingsUpsert {
     pub lat: f64,
     pub lon: f64,
     pub view_windows_json: String,
+    pub bortle_class: i32,
 }
 
 impl AppSettingsRow {
     pub fn into_settings(self) -> Result<AppSettings, String> {
-        AppSettings::from_parts(self.lat, self.lon, &self.view_windows_json)
+        AppSettings::from_parts(
+            self.lat,
+            self.lon,
+            &self.view_windows_json,
+            self.bortle_class.clamp(1, 9) as u8,
+        )
     }
 
     /// Load settings from DB, or seed Paris defaults when the table is empty.
@@ -350,6 +357,7 @@ impl AppSettingsRow {
             lat: settings.lat,
             lon: settings.lon,
             view_windows_json: json,
+            bortle_class: settings.bortle_class as i32,
         };
         diesel::insert_into(app_settings::table)
             .values(&row)
@@ -374,7 +382,8 @@ mod app_settings_tests {
                 id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
                 lat DOUBLE NOT NULL,
                 lon DOUBLE NOT NULL,
-                view_windows_json TEXT NOT NULL
+                view_windows_json TEXT NOT NULL,
+                bortle_class INTEGER NOT NULL DEFAULT 5
             )",
         )
         .execute(&mut conn)
@@ -403,5 +412,137 @@ mod app_settings_tests {
         assert!((loaded.lat - 45.0).abs() < 1e-9);
         assert!((loaded.lon - 1.0).abs() < 1e-9);
         assert_eq!(loaded.view_windows, settings.view_windows);
+    }
+}
+
+/// Event kinds stored in `iss_events.kind`.
+pub const ISS_KIND_VISIBLE_PASS: &str = "visible_pass";
+pub const ISS_KIND_SUN_TRANSIT: &str = "sun_transit";
+pub const ISS_KIND_MOON_TRANSIT: &str = "moon_transit";
+
+#[derive(Queryable, Selectable, Clone, Debug)]
+#[diesel(table_name = crate::schema::iss_events)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct IssEventRow {
+    pub id: i32,
+    pub kind: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub tle_epoch_ms: i64,
+    pub computed_at_ms: i64,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub peak_ms: i64,
+    pub payload_json: String,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::iss_events)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct IssEventInsert {
+    pub kind: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub tle_epoch_ms: i64,
+    pub computed_at_ms: i64,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub peak_ms: i64,
+    pub payload_json: String,
+}
+
+impl IssEventInsert {
+    pub fn from_bundle(
+        bundle: &crate::satellites::IssPredictionBundle,
+        lat: f64,
+        lon: f64,
+    ) -> Result<Vec<Self>, String> {
+        let tle_epoch_ms = bundle.tle.tle_epoch.timestamp_millis();
+        let computed_at_ms = bundle.computed_at.timestamp_millis();
+        let mut rows = Vec::new();
+        for p in &bundle.passes {
+            rows.push(Self {
+                kind: ISS_KIND_VISIBLE_PASS.to_string(),
+                lat,
+                lon,
+                tle_epoch_ms,
+                computed_at_ms,
+                start_ms: p.aos.timestamp_millis(),
+                end_ms: p.los.timestamp_millis(),
+                peak_ms: p.peak.timestamp_millis(),
+                payload_json: serde_json::to_string(p)
+                    .map_err(|e| format!("serialize pass: {e}"))?,
+            });
+        }
+        for e in &bundle.sun_transits {
+            rows.push(Self {
+                kind: ISS_KIND_SUN_TRANSIT.to_string(),
+                lat,
+                lon,
+                tle_epoch_ms,
+                computed_at_ms,
+                start_ms: e.center_time.timestamp_millis(),
+                end_ms: e.center_time.timestamp_millis(),
+                peak_ms: e.center_time.timestamp_millis(),
+                payload_json: serde_json::to_string(e)
+                    .map_err(|e| format!("serialize sun transit: {e}"))?,
+            });
+        }
+        for e in &bundle.moon_transits {
+            rows.push(Self {
+                kind: ISS_KIND_MOON_TRANSIT.to_string(),
+                lat,
+                lon,
+                tle_epoch_ms,
+                computed_at_ms,
+                start_ms: e.center_time.timestamp_millis(),
+                end_ms: e.center_time.timestamp_millis(),
+                peak_ms: e.center_time.timestamp_millis(),
+                payload_json: serde_json::to_string(e)
+                    .map_err(|e| format!("serialize moon transit: {e}"))?,
+            });
+        }
+        Ok(rows)
+    }
+}
+
+impl IssEventRow {
+    /// Replace all ISS events for a site (full-precision lat/lon).
+    pub fn replace_for_site(
+        conn: &mut SqliteConnection,
+        lat: f64,
+        lon: f64,
+        rows: &[IssEventInsert],
+    ) -> Result<(), String> {
+        use crate::schema::iss_events::dsl;
+        diesel::delete(dsl::iss_events.filter(dsl::lat.eq(lat)).filter(dsl::lon.eq(lon)))
+            .execute(conn)
+            .map_err(|e| format!("delete iss_events: {e}"))?;
+        if !rows.is_empty() {
+            diesel::insert_into(crate::schema::iss_events::table)
+                .values(rows)
+                .execute(conn)
+                .map_err(|e| format!("insert iss_events: {e}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn load_for_site_range(
+        conn: &mut SqliteConnection,
+        lat: f64,
+        lon: f64,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<Vec<Self>, String> {
+        use crate::schema::iss_events::dsl;
+        dsl::iss_events
+            .filter(dsl::lat.eq(lat))
+            .filter(dsl::lon.eq(lon))
+            .filter(dsl::peak_ms.ge(start_ms))
+            .filter(dsl::peak_ms.lt(end_ms))
+            .order(dsl::peak_ms.asc())
+            .select(Self::as_select())
+            .load::<Self>(conn)
+            .map_err(|e| format!("load iss_events: {e}"))
     }
 }

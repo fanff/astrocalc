@@ -1,10 +1,15 @@
 use crate::{
     config::{AppSettings, ViewWindow},
     deepsky::ensure_dso_batch,
+    models::{IssEventInsert, IssEventRow},
     panels::LatLon,
     panels::config::ConfigPanel,
     panels::dailysolar::{DAILY_PREFETCH_DAY_COUNT, DailySolar, SAMPLE_FREQ_MINUTES},
+    panels::iss::IssPanelState,
     panels::longterm_plot::LongTermPlot,
+    satellites::{
+        ISS_PREDICT_DAY_COUNT, IssPredictionBundle, TleCache, fetch_and_predict,
+    },
     solarsystemcalc::calculate_solar_system_positions,
     timezone_util::site_tz_from_lat_lon,
     weather_cache::{Location, WeatherCache, WeatherRequest, WeatherSnapshot, noon_utc_for_date},
@@ -13,6 +18,7 @@ use crate::{
     },
 };
 use chrono::{DateTime, NaiveDate, offset::Utc};
+use diesel::Connection;
 use eframe::egui;
 use egui::{Context, Frame, Ui};
 use egui_async::{Bind, EguiAsyncPlugin};
@@ -23,6 +29,7 @@ pub struct AstroCalcApp {
     pub lat: f64,
     pub long: f64,
     pub view_windows: Vec<ViewWindow>,
+    pub bortle_class: u8,
     pub zone_editor: ViewWindowEditorState,
 
     pub ephemeris_bind: Bind<(), String>,
@@ -42,11 +49,17 @@ pub struct AstroCalcApp {
     pub weather_bind: Bind<WeatherSnapshot, String>,
     pub weather_req_key: Option<(NaiveDate, i64, i64)>,
 
+    pub tle_cache: TleCache,
+    pub iss_bind: Bind<IssPredictionBundle, String>,
+    pub iss_req_key: Option<(NaiveDate, i64, i64, bool)>,
+    pub iss_done_key: Option<(NaiveDate, i64, i64, bool)>,
+
     pub selected_output_tz: String,
     pub selected_output_tz_obj: chrono_tz::Tz,
 
     pub long_term_data: LongTermPlot,
     pub daily_solar_data: DailySolar,
+    pub iss_data: IssPanelState,
     pub database_url: String,
 }
 
@@ -56,6 +69,7 @@ impl AstroCalcApp {
         settings: AppSettings,
         database_url: String,
         weather_cache: WeatherCache,
+        tle_cache: TleCache,
     ) -> Self {
         let lat = settings.lat;
         let long = settings.lon;
@@ -65,7 +79,8 @@ impl AstroCalcApp {
             location_map: LocationMap::new(egui_ctx, long, lat),
             lat,
             long,
-            view_windows: settings.view_windows,
+            view_windows: settings.view_windows.clone(),
+            bortle_class: settings.bortle_class,
             zone_editor: ViewWindowEditorState::default(),
             ephemeris_bind: Bind::new(false),
             ephemeris_req_key: None,
@@ -79,6 +94,10 @@ impl AstroCalcApp {
             weather_cache,
             weather_bind: Bind::new(true),
             weather_req_key: None,
+            tle_cache,
+            iss_bind: Bind::new(true),
+            iss_req_key: None,
+            iss_done_key: None,
             selected_output_tz: site_tz.name().to_string(),
             selected_output_tz_obj: site_tz,
             long_term_data: LongTermPlot::new(LatLon::new(lat, long), database_url.clone()),
@@ -88,9 +107,15 @@ impl AstroCalcApp {
                 vec![],
                 database_url.clone(),
             ),
+            iss_data: IssPanelState::new(
+                LatLon::new(lat, long),
+                settings.view_windows,
+                settings.bortle_class,
+            ),
             database_url,
         };
         app.daily_solar_data.set_local_tz(site_tz);
+        app.iss_data.set_local_tz(site_tz);
         app
     }
 }
@@ -102,6 +127,7 @@ impl AstroCalcApp {
             ui.selectable_value(&mut self.panel_view, 0, "Config");
             ui.selectable_value(&mut self.panel_view, 1, "Long Term");
             ui.selectable_value(&mut self.panel_view, 2, "Daily");
+            ui.selectable_value(&mut self.panel_view, 3, "ISS");
         });
         if self.panel_view == 2 && prev != 2 {
             self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
@@ -113,6 +139,12 @@ impl AstroCalcApp {
             self.long_term_data.view_windows = self.view_windows.clone();
             self.long_term_data.refresh_from_db();
         }
+        if self.panel_view == 3 && prev != 3 {
+            self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
+            self.iss_data.view_windows = self.view_windows.clone();
+            self.iss_data.set_local_tz(self.selected_output_tz_obj);
+            self.iss_data.request_predict = true;
+        }
         ui.separator();
     }
 
@@ -123,20 +155,27 @@ impl AstroCalcApp {
             timezone_name: self.selected_output_tz_obj.name(),
             database_url: self.database_url.as_str(),
             view_windows: &mut self.view_windows,
+            bortle_class: &mut self.bortle_class,
             zone_editor: &mut self.zone_editor,
             location_map: &mut self.location_map,
         }
         .show(ui);
+        self.iss_data.bortle_class = self.bortle_class;
         if changed {
             self.sync_site_timezone_from_map();
             self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
             self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
+            self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
+            self.iss_data.view_windows = self.view_windows.clone();
             self.ephemeris_req_key = None;
             self.ephemeris_done_key = None;
             self.long_term_req_key = None;
             self.long_term_done_key = None;
             self.long_term_dso_batch_key = None;
             self.long_term_dso_done_key = None;
+            self.iss_req_key = None;
+            self.iss_done_key = None;
+            self.iss_data.request_predict = true;
             self.daily_solar_data.refresh_positions();
             self.long_term_data.view_windows = self.view_windows.clone();
             self.long_term_data.refresh_from_db();
@@ -148,6 +187,7 @@ impl AstroCalcApp {
         self.selected_output_tz_obj = tz;
         self.selected_output_tz = tz.name().to_string();
         self.daily_solar_data.set_local_tz(tz);
+        self.iss_data.set_local_tz(tz);
     }
 
     fn ephemeris_key(&self) -> (NaiveDate, i64, i64) {
@@ -330,6 +370,9 @@ impl AstroCalcApp {
     }
 
     fn weather_target_time(&self) -> DateTime<Utc> {
+        if self.panel_view == 3 {
+            return Utc::now();
+        }
         if let Some(n) = self.daily_solar_data.dateinfo.as_ref() {
             let start = n.night_start_ms;
             let end = n.night_end_ms;
@@ -341,12 +384,22 @@ impl AstroCalcApp {
     }
 
     fn weather_key(&self) -> (NaiveDate, i64, i64) {
-        let snapped = self.weather_cache.snap_location(Location {
-            lat: self.daily_solar_data.lat_lon.lat,
-            lon: self.daily_solar_data.lat_lon.lon,
-        });
+        let (lat, lon, date) = if self.panel_view == 3 {
+            (
+                self.iss_data.lat_lon.lat,
+                self.iss_data.lat_lon.lon,
+                Utc::now().date_naive(),
+            )
+        } else {
+            (
+                self.daily_solar_data.lat_lon.lat,
+                self.daily_solar_data.lat_lon.lon,
+                self.daily_solar_data.date,
+            )
+        };
+        let snapped = self.weather_cache.snap_location(Location { lat, lon });
         (
-            self.daily_solar_data.date,
+            date,
             (snapped.lat * 100.0).round() as i64,
             (snapped.lon * 100.0).round() as i64,
         )
@@ -370,11 +423,16 @@ impl AstroCalcApp {
         }
         self.weather_req_key = Some(self.weather_key());
         let cache = self.weather_cache.clone();
+        let (lat, lon) = if self.panel_view == 3 {
+            (self.iss_data.lat_lon.lat, self.iss_data.lat_lon.lon)
+        } else {
+            (
+                self.daily_solar_data.lat_lon.lat,
+                self.daily_solar_data.lat_lon.lon,
+            )
+        };
         let req = WeatherRequest {
-            location: Location {
-                lat: self.daily_solar_data.lat_lon.lat,
-                lon: self.daily_solar_data.lat_lon.lon,
-            },
+            location: Location { lat, lon },
             target_time: self.weather_target_time(),
         };
         self.weather_bind
@@ -398,6 +456,120 @@ impl AstroCalcApp {
             }
             None => {}
         }
+    }
+
+    fn sync_weather_into_iss(&mut self) {
+        let pending = self.weather_bind.is_pending();
+        self.iss_data.weather_pending = pending;
+        if pending {
+            return;
+        }
+        match self.weather_bind.read() {
+            Some(Ok(snap)) => {
+                self.iss_data.weather_snapshot = Some(snap.clone());
+            }
+            Some(Err(_)) | None => {}
+        }
+    }
+
+    fn iss_key(&self, force: bool) -> (NaiveDate, i64, i64, bool) {
+        // Full-precision site key (0.0001° ~ 10 m) — not the 0.01° ephemeris sector.
+        (
+            self.iss_data.start_date,
+            (self.lat * 10_000.0).round() as i64,
+            (self.long * 10_000.0).round() as i64,
+            force,
+        )
+    }
+
+    fn apply_iss_bundle(&mut self, bundle: IssPredictionBundle) {
+        self.iss_data.apply_bundle(
+            bundle.passes.clone(),
+            bundle.sun_transits.clone(),
+            bundle.moon_transits.clone(),
+            bundle.tle.tle_epoch,
+            bundle.tle.fetched_at,
+        );
+
+        let lat = self.lat;
+        let lon = self.long;
+        let db = self.database_url.clone();
+        if let Ok(rows) = IssEventInsert::from_bundle(&bundle, lat, lon) {
+            if let Ok(mut conn) = diesel::SqliteConnection::establish(&db) {
+                let _ = IssEventRow::replace_for_site(&mut conn, lat, lon, &rows);
+            }
+        }
+    }
+
+    fn ensure_iss_predict(&mut self) {
+        let force = self.iss_data.force_refresh;
+        let key = self.iss_key(force);
+        let pending = self.iss_bind.is_pending();
+        self.iss_data.pending = pending;
+
+        if pending {
+            return;
+        }
+
+        if self.iss_req_key == Some(key) && self.iss_done_key != Some(key) {
+            let outcome: Option<Result<IssPredictionBundle, String>> =
+                match self.iss_bind.read() {
+                    Some(Ok(bundle)) => Some(Ok(bundle.clone())),
+                    Some(Err(e)) => Some(Err(e.clone())),
+                    None => None,
+                };
+            if let Some(res) = outcome {
+                match res {
+                    Ok(bundle) => {
+                        self.iss_done_key = Some(key);
+                        self.apply_iss_bundle(bundle);
+                    }
+                    Err(e) => {
+                        self.iss_data.error = Some(e);
+                        self.iss_data.request_predict = false;
+                        self.iss_data.force_refresh = false;
+                    }
+                }
+                return;
+            }
+        }
+
+        if !self.iss_data.request_predict && !force {
+            return;
+        }
+
+        if !force
+            && self
+                .iss_done_key
+                .as_ref()
+                .map(|k| (k.0, k.1, k.2))
+                == Some((key.0, key.1, key.2))
+        {
+            self.iss_data.request_predict = false;
+            return;
+        }
+
+        self.iss_req_key = Some(key);
+        let cache = self.tle_cache.clone();
+        let lat = self.lat;
+        let lon = self.long;
+        let date = self.iss_data.start_date;
+        let windows = self.view_windows.clone();
+        let force_fetch = force;
+        self.iss_data.force_refresh = false;
+        self.iss_data.pending = true;
+        self.iss_bind.refresh(async move {
+            fetch_and_predict(
+                &cache,
+                force_fetch,
+                lat,
+                lon,
+                date,
+                ISS_PREDICT_DAY_COUNT,
+                &windows,
+                true,
+            )
+        });
     }
 }
 impl eframe::App for AstroCalcApp {
@@ -442,6 +614,16 @@ impl eframe::App for AstroCalcApp {
                         self.force_weather_refresh();
                         self.sync_weather_into_daily();
                     }
+                }
+                if self.panel_view == 3 {
+                    self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
+                    self.iss_data.view_windows = self.view_windows.clone();
+                    self.iss_data.bortle_class = self.bortle_class;
+                    self.iss_data.set_local_tz(self.selected_output_tz_obj);
+                    self.refresh_weather_if_needed();
+                    self.sync_weather_into_iss();
+                    self.ensure_iss_predict();
+                    ui.add(&mut self.iss_data);
                 }
             });
     }

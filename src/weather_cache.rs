@@ -266,6 +266,25 @@ pub fn wind_cardinal(degrees: f64) -> &'static str {
 }
 
 impl WeatherSnapshot {
+    /// Nearest hourly cloud cover % to `utc`, or `None` if forecast has no nearby hour.
+    pub fn cloud_cover_near(&self, utc: DateTime<Utc>) -> Option<f64> {
+        let mut best: Option<(i64, f64)> = None;
+        for h in &self.hourly {
+            let Some(c) = h.cloud_cover else {
+                continue;
+            };
+            let dt = (h.datetime - utc).num_seconds().abs();
+            // Open-Meteo is hourly; ignore points more than ~90 minutes away.
+            if dt > 90 * 60 {
+                continue;
+            }
+            if best.map(|(d, _)| dt < d).unwrap_or(true) {
+                best = Some((dt, c));
+            }
+        }
+        best.map(|(_, c)| c)
+    }
+
     /// Hours overlapping `[start, end]` (inclusive-ish on start).
     pub fn night_hours(
         &self,

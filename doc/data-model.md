@@ -11,6 +11,7 @@ Persisted in SQLite table `app_settings` (singleton row `id = 1`). Domain type i
 | `lat` | `f64` | Observer latitude (degrees) |
 | `lon` | `f64` | Observer longitude (degrees) |
 | `view_windows` | `Vec<ViewWindow>` | Az/alt rectangles of usable sky (stored as JSON text) |
+| `bortle_class` | `u8` | Bortle dark-sky class `1`…`9` (default `5` suburban); used for ISS naked-eye quality labels |
 
 Connection string is **not** stored here — use `DATABASE_URL` (see Environment).
 
@@ -22,6 +23,7 @@ When `app_settings` has no row, the app seeds:
 |---------|--------|
 | Location | Paris center `48.8566°N`, `2.3522°E` |
 | View window | Wrap-north ≈350°: az `[185 → 175]`, alt `[5, 80]` |
+| Bortle | `5` (suburban) |
 
 ### ViewWindow
 
@@ -63,6 +65,7 @@ Singleton observer + view configuration.
 | `id` | integer PK | Always `1` (`CHECK (id = 1)`) |
 | `lat` / `lon` | double | Observer coordinates |
 | `view_windows_json` | text | JSON array of `ViewWindow` |
+| `bortle_class` | integer | Bortle class `1`…`9` (default `5`) |
 
 ### `dateinfo`
 
@@ -141,6 +144,31 @@ Notable fields on `DeepObject`: identifiers (NGC/IC/Messier), `ra` / `dec` strin
 
 DSO position samples are stored in `objectposition` with `kind='dso'` (selected-id merge; see above).
 
+## ISS events and TLE cache
+
+### On-disk TLE
+
+Directory `my_tle_cache/` (gitignored), file `iss_tle.json`: name, line1/line2, `fetched_at`, `tle_epoch`.
+Default freshness **6 h**; ISS panel “Refresh orbit data” forces refetch from Celestrak (`CATNR=25544`).
+Warn in UI when cache age &gt; 12 h (transits) or &gt; 24 h (passes).
+Prediction horizon: **60 calendar days** from the scan start date (UTC midnight).
+
+### `iss_events`
+
+Discrete prediction rows (not night position blobs). Keyed by **full-precision** observer `lat`/`lon` (not 0.01° sector).
+
+| Column | Meaning |
+|--------|---------|
+| `kind` | `visible_pass` \| `sun_transit` \| `moon_transit` |
+| `lat` / `lon` | Observer used for the prediction |
+| `tle_epoch_ms` / `computed_at_ms` | Provenance |
+| `start_ms` / `end_ms` / `peak_ms` | Event times (UTC ms) |
+| `payload_json` | `VisiblePass` or `DiskTransit` serde JSON |
+
+`VisiblePass` payload includes AOS/LOS of the **sunlit + dark-sky visible window**, peak mag/phase/range, and track samples. Older cached rows may omit the new fields (serde defaults).
+
+**Invalidation:** replace all rows for a site when a new prediction bundle is stored (TLE refresh or site/view change triggers recompute in the ISS panel).
+
 ## Sample / unused assets
 
 - `background/raw_paris/` — location JPEGs intended for overlay; not referenced by code
@@ -149,5 +177,5 @@ DSO position samples are stored in `objectposition` with `kind='dso'` (selected-
 ## Extension guidelines
 
 - Prefer new **settings columns / JSON fields** for user settings; new **tables or blob versions** for large computed series.
-- Conjunctions and ISS passes may need event tables (start/end, angular separation) rather than overloading `objectposition` without a type discriminant.
+- ISS uses the `iss_events` event table; do not overload `objectposition` for satellite tracks.
 - Always document cache invalidation when sector precision, night definition, or blob layout changes.

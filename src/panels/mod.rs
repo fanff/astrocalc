@@ -1,5 +1,6 @@
 pub mod config;
 pub mod dailysolar;
+pub mod iss;
 pub mod longterm_plot;
 
 #[derive(Clone, Copy, Debug)]
