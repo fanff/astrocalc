@@ -136,26 +136,24 @@ fn dso_checkbox_list(
             .weak(),
     );
 
-    ScrollArea::vertical()
-        .max_height(140.0)
-        .show(ui, |ui| {
-            for obj in filtered {
-                let Some(id) = obj.display_id() else {
-                    continue;
-                };
-                let mut on = selected.contains(&id);
-                let mag = obj
-                    .v_mag
-                    .map(|m| format!("{m:.1}"))
-                    .unwrap_or_else(|| "—".into());
-                let label = format!("{id}  mag {mag}  ·  {}", obj.type_label());
-                if ui.checkbox(&mut on, label).changed() {
-                    if on {
-                        selected.insert(id);
-                    } else {
-                        selected.remove(&id);
-                    }
+    ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
+        for obj in filtered {
+            let Some(id) = obj.display_id() else {
+                continue;
+            };
+            let mut on = selected.contains(&id);
+            let mag = obj
+                .v_mag
+                .map(|m| format!("{m:.1}"))
+                .unwrap_or_else(|| "—".into());
+            let label = format!("{id}  mag {mag}  ·  {}", obj.type_label());
+            if ui.checkbox(&mut on, label).changed() {
+                if on {
+                    selected.insert(id);
+                } else {
+                    selected.remove(&id);
                 }
             }
-        });
+        }
+    });
 }

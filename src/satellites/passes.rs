@@ -4,9 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::config::ViewWindow;
 
-use super::brightness::{
-    MIN_VISIBLE_DURATION_SECS, apparent_magnitude, phase_angle_deg,
-};
+use super::brightness::{MIN_VISIBLE_DURATION_SECS, apparent_magnitude, phase_angle_deg};
 use super::events::{TrackSample, VisiblePass};
 use super::illumination::{DEFAULT_OBSERVER_SUN_MAX_ALT_DEG, pass_illumination_ok};
 use super::propagate::{Observer, Propagator, teme_to_ecef};
@@ -75,14 +73,9 @@ pub fn find_passes(
                 j += 1;
             }
             let los_coarse = alts[j].0;
-            if let Some(pass) = refine_pass(
-                prop,
-                observer,
-                aos_coarse,
-                los_coarse,
-                params,
-                view_windows,
-            )? {
+            if let Some(pass) =
+                refine_pass(prop, observer, aos_coarse, los_coarse, params, view_windows)?
+            {
                 passes.push(pass);
             }
             i = j;
@@ -167,9 +160,7 @@ fn refine_pass(
         } else if let Some(s) = seg_start.take() {
             let end = t - params.fine_step;
             if end > s {
-                let better = best
-                    .map(|(a, b)| (end - s) > (b - a))
-                    .unwrap_or(true);
+                let better = best.map(|(a, b)| (end - s) > (b - a)).unwrap_or(true);
                 if better {
                     best = Some((s, end));
                 }
@@ -178,9 +169,7 @@ fn refine_pass(
         t += params.fine_step;
     }
     if let Some(s) = seg_start {
-        let better = best
-            .map(|(a, b)| (geom_los - s) > (b - a))
-            .unwrap_or(true);
+        let better = best.map(|(a, b)| (geom_los - s) > (b - a)).unwrap_or(true);
         if better {
             best = Some((s, geom_los));
         }

@@ -42,11 +42,7 @@ fn coords_hour_angle(gmst: f64, lon_rad: f64, ra: f64) -> f64 {
 }
 
 /// True when the Sun is deep enough below the horizon for a dark sky.
-pub fn observer_sky_dark(
-    observer: &Observer,
-    utc: DateTime<Utc>,
-    max_sun_alt_deg: f64,
-) -> bool {
+pub fn observer_sky_dark(observer: &Observer, utc: DateTime<Utc>, max_sun_alt_deg: f64) -> bool {
     observer_sun_altitude_deg(observer, utc) < max_sun_alt_deg
 }
 
@@ -72,8 +68,7 @@ pub fn pass_illumination_ok(
     utc: DateTime<Utc>,
     max_sun_alt_deg: f64,
 ) -> bool {
-    satellite_sunlit(sat_ecef_km, utc)
-        && observer_sky_dark(observer, utc, max_sun_alt_deg)
+    satellite_sunlit(sat_ecef_km, utc) && observer_sky_dark(observer, utc, max_sun_alt_deg)
 }
 
 /// Apparent solar angular semi-diameter (degrees) from geocentric distance.
@@ -176,7 +171,11 @@ mod tests {
         let utc = Utc.with_ymd_and_hms(2006, 6, 16, 12, 0, 0).unwrap();
         let alt = observer_sun_altitude_deg(&obs, utc);
         assert!(alt > 20.0, "sun alt at noon Paris June: {alt}");
-        assert!(!observer_sky_dark(&obs, utc, DEFAULT_OBSERVER_SUN_MAX_ALT_DEG));
+        assert!(!observer_sky_dark(
+            &obs,
+            utc,
+            DEFAULT_OBSERVER_SUN_MAX_ALT_DEG
+        ));
     }
 
     #[test]
@@ -185,7 +184,11 @@ mod tests {
         let utc = Utc.with_ymd_and_hms(2006, 6, 16, 0, 0, 0).unwrap();
         let alt = observer_sun_altitude_deg(&obs, utc);
         assert!(alt < -6.0, "sun alt midnight: {alt}");
-        assert!(observer_sky_dark(&obs, utc, DEFAULT_OBSERVER_SUN_MAX_ALT_DEG));
+        assert!(observer_sky_dark(
+            &obs,
+            utc,
+            DEFAULT_OBSERVER_SUN_MAX_ALT_DEG
+        ));
     }
 
     #[test]
@@ -193,11 +196,7 @@ mod tests {
         let utc = Utc.with_ymd_and_hms(2006, 6, 16, 12, 0, 0).unwrap();
         let sun = sun_ecef_unit(utc);
         // Point on day side outside Earth.
-        let sat = [
-            sun[0] * 7000.0,
-            sun[1] * 7000.0,
-            sun[2] * 7000.0,
-        ];
+        let sat = [sun[0] * 7000.0, sun[1] * 7000.0, sun[2] * 7000.0];
         assert!(satellite_sunlit(sat, utc));
     }
 
@@ -206,11 +205,7 @@ mod tests {
         let utc = Utc.with_ymd_and_hms(2006, 6, 16, 12, 0, 0).unwrap();
         let sun = sun_ecef_unit(utc);
         // Directly anti-sun at LEO altitude → in umbra.
-        let sat = [
-            -sun[0] * 7000.0,
-            -sun[1] * 7000.0,
-            -sun[2] * 7000.0,
-        ];
+        let sat = [-sun[0] * 7000.0, -sun[1] * 7000.0, -sun[2] * 7000.0];
         assert!(!satellite_sunlit(sat, utc));
     }
 

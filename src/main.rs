@@ -9,17 +9,16 @@ use dotenvy::dotenv;
 use eframe::egui;
 use std::env;
 
+mod deepsky;
 mod gui;
 pub mod models;
 mod panels;
+mod satellites;
 pub mod schema;
 mod solarsystemcalc;
 mod timezone_util;
 mod weather_cache;
-mod deepsky;
-mod satellites;
 mod widgets;
-use crate::deepsky::data::CATALOG;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
@@ -36,7 +35,6 @@ fn open_and_migrate(database_url: &str) -> Result<SqliteConnection, Box<dyn std:
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Loaded {} rows", CATALOG.len());
     dotenv().ok();
 
     let database_url = resolve_database_url();
@@ -49,13 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         chrono::Duration::minutes(30), // freshness: 30 minutes
         2,                             // coord precision: ~1 km
     )?;
-    let tle_cache = crate::satellites::TleCache::new(
-        "my_tle_cache",
-        crate::satellites::DEFAULT_TLE_FRESHNESS,
-    )?;
+    let tle_cache =
+        crate::satellites::TleCache::new("my_tle_cache", crate::satellites::DEFAULT_TLE_FRESHNESS)?;
 
-    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
-        .unwrap_or_default();
+    let icon =
+        eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).unwrap_or_default();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("AstroCalc")

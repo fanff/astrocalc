@@ -1,6 +1,6 @@
+use chrono_tz::Tz;
 use egui::{Align2, Color32, Id, PopupAnchor, Response, RichText};
 use egui_plot::{Line, Plot, PlotBounds, PlotPoint, PlotPoints, PlotTransform, PlotUi, Text};
-use chrono_tz::Tz;
 
 use crate::solarsystemcalc::{ObjectPosition, ObjectPositionSegments, get_object_color};
 use crate::timezone_util::format_utc_local_hm;
@@ -55,15 +55,12 @@ impl egui::Widget for &mut SkyMapPlot {
                 let object_color = get_object_color(opt_name);
                 let object_segs = self.op_segs.segments.get(opt_name).unwrap();
                 for pos_segment in object_segs {
-                    let points: PlotPoints<'_> =
-                        PlotPoints::from_iter(pos_segment.iter().map(|pos| {
-                            az_alt_to_xy(pos.azimuth, pos.altitude)
-                        }));
-                    plot_ui.line(
-                        Line::new(opt_name, points)
-                            .color(object_color)
-                            .width(1.0),
+                    let points: PlotPoints<'_> = PlotPoints::from_iter(
+                        pos_segment
+                            .iter()
+                            .map(|pos| az_alt_to_xy(pos.azimuth, pos.altitude)),
                     );
+                    plot_ui.line(Line::new(opt_name, points).color(object_color).width(1.0));
                 }
             }
 

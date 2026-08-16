@@ -23,6 +23,20 @@ use crate::panels::LatLon;
 pub const DAILY_PREFETCH_DAY_COUNT: i64 = 10;
 pub const SAMPLE_FREQ_MINUTES: i64 = 10;
 
+const SEGMENT_GAP_MINUTES: i64 = 10;
+const SEGMENT_MIN_DURATION_MINUTES: i64 = 60;
+
+#[derive(Clone, PartialEq)]
+struct SegmentCacheKey {
+    date: NaiveDate,
+    lat_sector: f64,
+    lon_sector: f64,
+    view_windows: Vec<ViewWindow>,
+    selected_names: Vec<String>,
+    /// Fingerprint of loaded positions (len + first/last sample times).
+    pos_fp: Option<(usize, i64, i64)>,
+}
+
 pub struct DailySolar {
     pub date: NaiveDate,
     pub lat_lon: LatLon,
@@ -51,6 +65,11 @@ pub struct DailySolar {
     pub weather_open: bool,
     /// Radar / sky map expanded (folds from the left).
     pub radar_open: bool,
+    /// Filtered segments rebuilt only when inputs change.
+    cached_segments: ObjectPositionSegments,
+    segment_cache_key: Option<SegmentCacheKey>,
+    /// Object type map for calendar plot (rebuilt with segments).
+    cached_object_types: HashMap<String, String>,
 }
 impl DailySolar {
     pub fn new(
@@ -79,6 +98,9 @@ impl DailySolar {
             dso_types: HashMap::new(),
             weather_open: true,
             radar_open: true,
+            cached_segments: ObjectPositionSegments::new(),
+            segment_cache_key: None,
+            cached_object_types: CatalogSelection::planet_type_map(),
         }
     }
 
@@ -100,10 +122,6 @@ impl DailySolar {
 
     fn refresh_positions_inner(&mut self, request_prefetch: bool) {
         let snapped_lat_lon = self.lat_lon.snap(2);
-        println!(
-            "Refreshing positions for date: {} at snapped {} {}",
-            self.date, snapped_lat_lon.lat, snapped_lat_lon.lon
-        );
         let mut conn: SqliteConnection =
             SqliteConnection::establish(&self.database_connection).unwrap();
 
@@ -125,6 +143,7 @@ impl DailySolar {
                 self.dso_types.clear();
             }
         }
+        self.segment_cache_key = None;
         if request_prefetch {
             self.request_ephemeris_prefetch = true;
         }
@@ -132,7 +151,7 @@ impl DailySolar {
 
     fn refresh_dso_positions(&mut self, conn: &mut SqliteConnection) {
         self.dso_types.clear();
-        let Some(night) = self.dateinfo.clone() else {
+        let Some(night) = self.dateinfo.as_ref() else {
             return;
         };
         let ids = self.catalog_select.selected_dso_ids();
@@ -142,7 +161,7 @@ impl DailySolar {
         let snapped = self.lat_lon.snap(2);
         let (dso_pos, types) = ensure_dso_positions(
             conn,
-            &night,
+            night,
             snapped.lat,
             snapped.lon,
             SAMPLE_FREQ_MINUTES,
@@ -156,6 +175,53 @@ impl DailySolar {
             Some(existing) => existing.extend(dso_pos),
             None => self.positions = Some(dso_pos),
         }
+    }
+
+    fn positions_fingerprint(positions: Option<&Vec<ObjectPosition>>) -> Option<(usize, i64, i64)> {
+        let pos = positions?;
+        if pos.is_empty() {
+            return Some((0, 0, 0));
+        }
+        Some((
+            pos.len(),
+            pos.first()?.utc_datetime.timestamp_millis(),
+            pos.last()?.utc_datetime.timestamp_millis(),
+        ))
+    }
+
+    /// Rebuild filtered segments when inputs change. Returns true if rebuilt.
+    fn ensure_segment_cache(&mut self) -> bool {
+        let snapped = self.lat_lon.snap(2);
+        let selected_names = self.catalog_select.selected_object_names();
+        let key = SegmentCacheKey {
+            date: self.date,
+            lat_sector: snapped.lat,
+            lon_sector: snapped.lon,
+            view_windows: self.view_windows.clone(),
+            selected_names: selected_names.clone(),
+            pos_fp: Self::positions_fingerprint(self.positions.as_ref()),
+        };
+        if self.segment_cache_key.as_ref() == Some(&key) {
+            return false;
+        }
+
+        if let Some(object_pos) = &self.positions {
+            self.cached_segments =
+                ObjectPositionSegments::from_positions(object_pos, SEGMENT_GAP_MINUTES)
+                    .filter_view(
+                        &self.view_windows,
+                        SEGMENT_MIN_DURATION_MINUTES,
+                        &selected_names,
+                    );
+            let mut types = CatalogSelection::planet_type_map();
+            types.extend(self.dso_types.clone());
+            self.cached_object_types = types;
+        } else {
+            self.cached_segments = ObjectPositionSegments::new();
+            self.cached_object_types = CatalogSelection::planet_type_map();
+        }
+        self.segment_cache_key = Some(key);
+        true
     }
 }
 impl egui::Widget for &mut DailySolar {
@@ -219,24 +285,12 @@ impl egui::Widget for &mut DailySolar {
             self.refresh_positions();
         }
 
-        if let Some(object_pos) = &self.positions {
-            let some_position = ObjectPositionSegments::from_positions(object_pos, 10).filter_view(
-                &self.view_windows,
-                60,
-                &self.catalog_select.selected_object_names(),
-            );
-
-            let mut types = CatalogSelection::planet_type_map();
-            types.extend(self.dso_types.clone());
-
-            self.cal_plot.dateinfo = self.dateinfo.clone();
-            self.cal_plot.positions_map = some_position.clone();
-            self.cal_plot.object_types = types;
-            self.sky_map.op_segs = some_position;
-        } else {
-            self.cal_plot.dateinfo = self.dateinfo.clone();
-            self.cal_plot.positions_map = ObjectPositionSegments::new();
-            self.sky_map.op_segs = ObjectPositionSegments::new();
+        let segments_rebuilt = self.ensure_segment_cache();
+        self.cal_plot.dateinfo = self.dateinfo.clone();
+        if segments_rebuilt {
+            self.cal_plot.positions_map = self.cached_segments.clone();
+            self.cal_plot.object_types = self.cached_object_types.clone();
+            self.sky_map.op_segs = self.cached_segments.clone();
         }
 
         let plots_h = ui.available_height().max(160.0);

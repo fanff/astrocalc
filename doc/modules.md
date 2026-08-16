@@ -16,7 +16,7 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 | [`src/panels/`](../src/panels/) | Screen-level UI: `LatLon`, Config, Daily, Long Term | Reusable plot primitives (those go in widgets) |
 | [`src/panels/config.rs`](../src/panels/config.rs) | Config layout: location map, visibility zones, Save → SQLite | Schema definitions; GeoJSON parsing |
 | [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load cached day, request background prefetch (day+10), object flags, weather panel, compose sky + calendar plots | Weather HTTP; ISS; raw Diesel schema details if a repository helper exists |
-| [`src/panels/iss.rs`](../src/panels/iss.rs) | ISS opportunities view: ~60-day chronological list of sunlit passes + Sun/Moon disk events | TLE HTTP / SGP4 (lives in `satellites`) |
+| [`src/panels/iss.rs`](../src/panels/iss.rs) | ISS opportunities view: cache-first `reload_cached_only` from `iss_events`, then Bind predict on miss; ~60-day list of sunlit passes + Sun/Moon disk events | TLE HTTP / SGP4 (lives in `satellites`) |
 | [`src/panels/longterm_plot.rs`](../src/panels/longterm_plot.rs) | Multi-night presence overview from DB (≥20 min in view; catalog selection; zoomable) | Duplicate daily filtering logic — share domain filters |
 | [`src/widgets/`](../src/widgets/) | Reusable controls/plots: sky map, polar helpers, view-window zone editor, location map, calendar plot, weather panel, ISS opportunity helpers, catalog selection | Opening DB connections; owning app-wide config |
 | [`src/widgets/location_map.rs`](../src/widgets/location_map.rs) | OSM `HttpTiles` + offline vector basemap, click marker, online probe / mode | Config Save; view-window editing |

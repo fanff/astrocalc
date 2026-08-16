@@ -68,7 +68,12 @@ pub struct DeepObject {
 impl DeepObject {
     /// Stable UI / segment id: prefer Messier (`M31`), else `NGC…`, else catalog `Name`.
     pub fn display_id(&self) -> Option<String> {
-        if let Some(m) = self.messier.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(m) = self
+            .messier
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             let id = if m.starts_with('M') || m.starts_with('m') {
                 m.to_uppercase()
             } else {
@@ -76,7 +81,12 @@ impl DeepObject {
             };
             return Some(id);
         }
-        if let Some(n) = self.ngc.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(n) = self
+            .ngc
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             let id = if n.to_uppercase().starts_with("NGC") {
                 n.to_uppercase().replace(' ', "")
             } else {
@@ -155,11 +165,7 @@ pub fn parse_hms_to_degrees(s: &str) -> Option<f64> {
     }
     let h = parts[0] as i64;
     let m = parts[1].abs() as i64;
-    let sec = if parts.len() > 2 {
-        parts[2].abs()
-    } else {
-        0.0
-    };
+    let sec = if parts.len() > 2 { parts[2].abs() } else { 0.0 };
     Some(astro::angle::deg_frm_hms(h, m, sec))
 }
 
@@ -171,11 +177,7 @@ pub fn parse_dms_to_degrees(s: &str) -> Option<f64> {
     }
     let deg = parts[0] as i64;
     let min = parts[1].abs() as i64;
-    let sec = if parts.len() > 2 {
-        parts[2].abs()
-    } else {
-        0.0
-    };
+    let sec = if parts.len() > 2 { parts[2].abs() } else { 0.0 };
     Some(astro::angle::deg_frm_dms(deg, min, sec))
 }
 

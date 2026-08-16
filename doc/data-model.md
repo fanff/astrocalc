@@ -167,6 +167,8 @@ Discrete prediction rows (not night position blobs). Keyed by **full-precision**
 
 `VisiblePass` payload includes AOS/LOS of the **sunlit + dark-sky visible window**, peak mag/phase/range, and track samples. Older cached rows may omit the new fields (serde defaults).
 
+**Panel open:** cache-first via `IssEventRow::try_load_bundle` / `IssPanelState::reload_cached_only`. On miss (or “Refresh orbit data” / site / view-window change), `egui_async::Bind` runs `fetch_and_predict` and replaces rows for the site.
+
 **Invalidation:** replace all rows for a site when a new prediction bundle is stored (TLE refresh or site/view change triggers recompute in the ISS panel).
 
 ## Sample / unused assets

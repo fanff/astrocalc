@@ -36,7 +36,11 @@ impl Default for TransitSearchParams {
 }
 
 /// Topocentric unit vector toward the satellite (from observer), in equatorial-ish TEME.
-fn iss_look_unit(prop: &Propagator, observer: &Observer, utc: DateTime<Utc>) -> Result<[f64; 3], String> {
+fn iss_look_unit(
+    prop: &Propagator,
+    observer: &Observer,
+    utc: DateTime<Utc>,
+) -> Result<[f64; 3], String> {
     let teme = prop.teme_km_at(utc)?;
     let sat = teme_to_ecef(teme, utc);
     let obs = observer.ecef_km();
@@ -228,8 +232,7 @@ pub fn find_disk_events(
         let (t2, s2, _, _) = samples[i + 1];
         // Local minimum in separation.
         if s1 <= s0 && s1 <= s2 && s1 < params.candidate_sep_deg {
-            let (center, sep, semi) =
-                refine_min_sep(prop, observer, body, t0, t2)?;
+            let (center, sep, semi) = refine_min_sep(prop, observer, body, t0, t2)?;
             let topo = prop.observe(observer, center)?;
             if topo.altitude_deg < params.min_altitude_deg {
                 i += 1;
@@ -332,12 +335,26 @@ mod tests {
         let obs = Observer::new(48.8566, 2.3522);
         let start = prop.epoch_utc();
         let end = start + Duration::hours(6);
-        let sun_ev =
-            find_disk_events(&prop, &obs, DiskBody::Sun, start, end, &TransitSearchParams::default(), &[])
-                .unwrap();
-        let moon_ev =
-            find_disk_events(&prop, &obs, DiskBody::Moon, start, end, &TransitSearchParams::default(), &[])
-                .unwrap();
+        let sun_ev = find_disk_events(
+            &prop,
+            &obs,
+            DiskBody::Sun,
+            start,
+            end,
+            &TransitSearchParams::default(),
+            &[],
+        )
+        .unwrap();
+        let moon_ev = find_disk_events(
+            &prop,
+            &obs,
+            DiskBody::Moon,
+            start,
+            end,
+            &TransitSearchParams::default(),
+            &[],
+        )
+        .unwrap();
         // May be empty; ensure API works.
         for e in sun_ev.iter().chain(moon_ev.iter()) {
             assert!(e.min_separation_deg >= 0.0);

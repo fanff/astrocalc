@@ -71,7 +71,8 @@ Not user-facing features, but required so the priority list does not rot the tre
 - Extract domain/infra behind `lib.rs` when DSO/ISS share types
 - [x] Fix window title (`"egui Demo"` → AstroCalc) and app icon
 - Migration/schema hygiene (empty third migration; naming leftovers)
-- Cull unused deps (`clap`, `suncalc` if still unused)
+- [x] Cull unused deps (`clap`, `suncalc`, `polars`)
+- [x] CI: `fmt` + `clippy -D warnings` + `test` on PRs (`.github/workflows/ci.yml`)
 - Keep [modules.md](modules.md) and this roadmap updated when a major feature lands
 - Photo asset pipeline (naming, association to site/view window) before overlay UI
 - [x] Config panel UX: compact layout, sticky Save, OSM + offline vector basemap (Natural Earth / FR regions)

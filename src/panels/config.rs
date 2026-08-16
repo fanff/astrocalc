@@ -64,7 +64,11 @@ impl ConfigPanel<'_> {
         ui.horizontal(|ui| {
             ui.label("Map source:");
             ui.radio_value(&mut self.location_map.mode, MapTileMode::Auto, "Auto");
-            ui.radio_value(&mut self.location_map.mode, MapTileMode::Online, "OSM (online)");
+            ui.radio_value(
+                &mut self.location_map.mode,
+                MapTileMode::Online,
+                "OSM (online)",
+            );
             ui.radio_value(
                 &mut self.location_map.mode,
                 MapTileMode::Offline,

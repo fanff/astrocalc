@@ -99,17 +99,13 @@ impl WeatherCache {
     ) -> Result<WeatherSnapshot, String> {
         if !force {
             if let Some(cached) = self.try_get_from_cache(req)? {
-                println!("Using cached weather data.");
                 return Self::snapshot_from_cached(cached);
             }
         }
-        println!("Fetching weather data from API...");
         let (forecast, fetched_at) = self.fetch_from_api(req).await?;
         let snapped = self.snap_location(req.location);
         let yaml = serde_yaml::to_string(&forecast).map_err(|e| e.to_string())?;
-        let data = ForecastData {
-            yaml_content: yaml,
-        };
+        let data = ForecastData { yaml_content: yaml };
         let cached = CachedForecast {
             location: snapped,
             fetched_at,
@@ -135,10 +131,6 @@ impl WeatherCache {
 
     fn try_get_from_cache(&self, req: &WeatherRequest) -> Result<Option<CachedForecast>, String> {
         let snapped = self.snap_location(req.location);
-        println!(
-            "Looking for cache file for location ({:.2}, {:.2})",
-            snapped.lat, snapped.lon
-        );
         let re = Regex::new(&format!(
             r"^{:.2}_{:.2}_(\d+)\.yaml$",
             snapped.lat, snapped.lon
@@ -164,12 +156,10 @@ impl WeatherCache {
 
         let mut sorted_candidates: Vec<(DirEntry, Duration)> = candidates.collect();
         sorted_candidates.sort_by_key(|k| k.1);
-        println!("Cache candidates: {:?}", &sorted_candidates);
 
         if let Some((entry, _)) = sorted_candidates.first() {
             let text = fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
-            let cached: CachedForecast =
-                serde_yaml::from_str(&text).map_err(|e| e.to_string())?;
+            let cached: CachedForecast = serde_yaml::from_str(&text).map_err(|e| e.to_string())?;
             Ok(Some(cached))
         } else {
             Ok(None)

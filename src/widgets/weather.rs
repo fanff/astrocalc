@@ -53,10 +53,7 @@ impl egui::Widget for WeatherPanel<'_> {
             };
 
             ui.horizontal(|ui| {
-                ui.label(format!(
-                    "{:.2}, {:.2}",
-                    snap.snapped.lat, snap.snapped.lon
-                ));
+                ui.label(format!("{:.2}, {:.2}", snap.snapped.lat, snap.snapped.lon));
                 if ui.small_button("Refresh").clicked() {
                     *self.force_refresh = true;
                 }

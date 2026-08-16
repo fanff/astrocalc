@@ -172,10 +172,7 @@ pub struct ObjectPositionInsert {
 }
 
 impl ObjectPositionStored {
-    pub fn available_days(
-        conn: &mut SqliteConnection,
-        lat_lon_snapped: &LatLon,
-    ) -> Vec<NaiveDate> {
+    pub fn available_days(conn: &mut SqliteConnection, lat_lon_snapped: &LatLon) -> Vec<NaiveDate> {
         Self::available_days_kind(conn, lat_lon_snapped, POSITION_KIND_SOLAR)
     }
 
@@ -242,7 +239,7 @@ impl ObjectPositionInsert {
         date: NaiveDate,
         lat_sector: f64,
         lon_sector: f64,
-        op_vec: &Vec<ObjectPosition>,
+        op_vec: &[ObjectPosition],
     ) {
         Self::upsert_date(
             conn,
@@ -260,16 +257,11 @@ impl ObjectPositionInsert {
         lat_sector_val: f64,
         lon_sector_val: f64,
         kind_val: &str,
-        op_vec: &Vec<ObjectPosition>,
+        op_vec: &[ObjectPosition],
     ) {
-        println!(
-            "Upserting {} object positions ({kind_val}) into the database.",
-            op_vec.len()
-        );
         use crate::schema::objectposition::dsl::*;
         let now_utc = chrono::Utc::now().timestamp_millis();
-        let encoded: Vec<u8> =
-            bincode::encode_to_vec(op_vec, bincode::config::standard()).unwrap();
+        let encoded: Vec<u8> = bincode::encode_to_vec(op_vec, bincode::config::standard()).unwrap();
         let new_element = ObjectPositionInsert {
             calculated_at_ms: now_utc,
             date: date_at.to_string(),
@@ -291,11 +283,10 @@ impl ObjectPositionInsert {
         .execute(conn)
         .expect("error deleting prior objectposition row");
 
-        let q = diesel::insert_into(objectposition)
+        diesel::insert_into(objectposition)
             .values(new_element)
             .execute(conn)
             .expect("error saving objectposition");
-        println!("Inserted {} rows.", q);
     }
 }
 
@@ -515,9 +506,13 @@ impl IssEventRow {
         rows: &[IssEventInsert],
     ) -> Result<(), String> {
         use crate::schema::iss_events::dsl;
-        diesel::delete(dsl::iss_events.filter(dsl::lat.eq(lat)).filter(dsl::lon.eq(lon)))
-            .execute(conn)
-            .map_err(|e| format!("delete iss_events: {e}"))?;
+        diesel::delete(
+            dsl::iss_events
+                .filter(dsl::lat.eq(lat))
+                .filter(dsl::lon.eq(lon)),
+        )
+        .execute(conn)
+        .map_err(|e| format!("delete iss_events: {e}"))?;
         if !rows.is_empty() {
             diesel::insert_into(crate::schema::iss_events::table)
                 .values(rows)
@@ -544,5 +539,77 @@ impl IssEventRow {
             .select(Self::as_select())
             .load::<Self>(conn)
             .map_err(|e| format!("load iss_events: {e}"))
+    }
+
+    /// Rebuild a prediction bundle from cached rows (no SGP4). Returns `None` if empty.
+    /// TLE metadata prefers on-disk `TleCache`; otherwise uses row provenance for UI ages.
+    pub fn try_load_bundle(
+        conn: &mut SqliteConnection,
+        lat: f64,
+        lon: f64,
+        start_ms: i64,
+        end_ms: i64,
+        tle_cache: &crate::satellites::TleCache,
+    ) -> Result<Option<crate::satellites::IssPredictionBundle>, String> {
+        let rows = Self::load_for_site_range(conn, lat, lon, start_ms, end_ms)?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut passes = Vec::new();
+        let mut sun_transits = Vec::new();
+        let mut moon_transits = Vec::new();
+        let mut tle_epoch_ms = rows[0].tle_epoch_ms;
+        let mut computed_at_ms = rows[0].computed_at_ms;
+
+        for row in &rows {
+            tle_epoch_ms = row.tle_epoch_ms;
+            computed_at_ms = row.computed_at_ms;
+            match row.kind.as_str() {
+                ISS_KIND_VISIBLE_PASS => {
+                    let p: crate::satellites::VisiblePass = serde_json::from_str(&row.payload_json)
+                        .map_err(|e| format!("deserialize visible_pass: {e}"))?;
+                    passes.push(p);
+                }
+                ISS_KIND_SUN_TRANSIT => {
+                    let e: crate::satellites::DiskTransit = serde_json::from_str(&row.payload_json)
+                        .map_err(|e| format!("deserialize sun_transit: {e}"))?;
+                    sun_transits.push(e);
+                }
+                ISS_KIND_MOON_TRANSIT => {
+                    let e: crate::satellites::DiskTransit = serde_json::from_str(&row.payload_json)
+                        .map_err(|e| format!("deserialize moon_transit: {e}"))?;
+                    moon_transits.push(e);
+                }
+                other => {
+                    return Err(format!("unknown iss_events kind: {other}"));
+                }
+            }
+        }
+
+        let tle = tle_cache.load().unwrap_or_else(|| {
+            let epoch =
+                DateTime::<Utc>::from_timestamp_millis(tle_epoch_ms).unwrap_or_else(|| Utc::now());
+            let computed = DateTime::<Utc>::from_timestamp_millis(computed_at_ms)
+                .unwrap_or_else(|| Utc::now());
+            crate::satellites::CachedTle {
+                name: "ISS (ZARYA)".into(),
+                line1: String::new(),
+                line2: String::new(),
+                fetched_at: computed,
+                tle_epoch: epoch,
+            }
+        });
+
+        let computed_at =
+            DateTime::<Utc>::from_timestamp_millis(computed_at_ms).unwrap_or_else(|| Utc::now());
+
+        Ok(Some(crate::satellites::IssPredictionBundle {
+            tle,
+            passes,
+            sun_transits,
+            moon_transits,
+            computed_at,
+        }))
     }
 }

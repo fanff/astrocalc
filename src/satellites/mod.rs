@@ -91,10 +91,7 @@ pub fn predict_iss_window(
 
 /// UTC window covering `date` .. `date + days` (inclusive start, exclusive end+1 day).
 pub fn utc_window_for_dates(date: NaiveDate, days: i64) -> (DateTime<Utc>, DateTime<Utc>) {
-    let start = date
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc();
+    let start = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
     let end = (date + Duration::days(days))
         .and_hms_opt(0, 0, 0)
         .unwrap()

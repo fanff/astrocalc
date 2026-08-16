@@ -36,6 +36,7 @@ Current solar-system path:
 2. Sample object positions at a chosen frequency during each night.
 3. Persist night metadata (`dateinfo`) and a bincode blob of positions (`objectposition`, `kind='solar'`).
 4. Deep-sky uses the same table with `kind='dso'` and merges newly selected ids into the night blob.
+5. ISS panel opens **cache-first** from `iss_events`; Bind/`fetch_and_predict` runs only on miss, force refresh, or site/view invalidation.
 
 **Rules:**
 

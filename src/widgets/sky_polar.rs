@@ -25,7 +25,13 @@ pub fn xy_to_az_alt(x: f64, y: f64) -> (f64, f64) {
 
 /// Sample points along an altitude arc from `az_start` toward `az_end` (degrees).
 /// If `wrap`, the arc goes the long way across north (`az_start → 360/0 → az_end`).
-pub fn arc_points(az_start: f64, az_end: f64, alt_deg: f64, wrap: bool, steps: usize) -> Vec<[f64; 2]> {
+pub fn arc_points(
+    az_start: f64,
+    az_end: f64,
+    alt_deg: f64,
+    wrap: bool,
+    steps: usize,
+) -> Vec<[f64; 2]> {
     let span = if wrap {
         (360.0 - az_start) + az_end
     } else {

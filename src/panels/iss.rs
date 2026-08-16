@@ -2,13 +2,16 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use chrono_tz::Tz;
+use diesel::{Connection, SqliteConnection};
 use egui::{Color32, Frame, Response, RichText, ScrollArea, Stroke, Ui};
 
 use crate::config::ViewWindow;
+use crate::models::IssEventRow;
 use crate::panels::LatLon;
 use crate::satellites::{
-    DiskBody, DiskTransit, ISS_PREDICT_DAY_COUNT, PASS_STALE_AGE, TRANSIT_WARN_AGE, VisiblePass,
-    cloud_label, magnitude_phrase, moon_phase_label, naked_eye_label,
+    DiskBody, DiskTransit, ISS_PREDICT_DAY_COUNT, PASS_STALE_AGE, TRANSIT_WARN_AGE, TleCache,
+    VisiblePass, cloud_label, magnitude_phrase, moon_phase_label, naked_eye_label,
+    utc_window_for_dates,
 };
 use crate::weather_cache::WeatherSnapshot;
 use crate::widgets::iss_panel::{
@@ -59,6 +62,34 @@ impl IssPanelState {
 
     pub fn set_local_tz(&mut self, tz: Tz) {
         self.local_tz = tz;
+    }
+
+    /// Load ISS events from SQLite for the current site/window. Returns true on cache hit.
+    pub fn reload_cached_only(&mut self, database_url: &str, tle_cache: &TleCache) -> bool {
+        let Ok(mut conn) = SqliteConnection::establish(database_url) else {
+            return false;
+        };
+        let (start, end) = utc_window_for_dates(self.start_date, ISS_PREDICT_DAY_COUNT);
+        match IssEventRow::try_load_bundle(
+            &mut conn,
+            self.lat_lon.lat,
+            self.lat_lon.lon,
+            start.timestamp_millis(),
+            end.timestamp_millis(),
+            tle_cache,
+        ) {
+            Ok(Some(bundle)) => {
+                self.apply_bundle(
+                    bundle.passes,
+                    bundle.sun_transits,
+                    bundle.moon_transits,
+                    bundle.tle.tle_epoch,
+                    bundle.tle.fetched_at,
+                );
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn apply_bundle(
@@ -119,7 +150,10 @@ fn opportunity_card(ui: &mut Ui, line1: &str, line2: &str) {
     let title_c = card_title_color(ui);
     let body_c = card_body_color(ui);
     Frame::group(ui.style())
-        .stroke(Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color))
+        .stroke(Stroke::new(
+            1.0,
+            ui.visuals().widgets.noninteractive.bg_stroke.color,
+        ))
         .inner_margin(egui::Margin::symmetric(10, 8))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());

@@ -1,16 +1,10 @@
-use astro::{
-    angle,
-    coords::hr_angl_frm_observer_long,
-    time,
-};
+use astro::{angle, coords::hr_angl_frm_observer_long, time};
 use chrono::{DateTime, NaiveDate, Utc};
 use julian_day_converter::unixtime_to_julian_day;
 use std::collections::{HashMap, HashSet};
 
 use crate::deepsky::data::{CATALOG, DeepObject};
-use crate::models::{
-    ObjectPositionInsert, ObjectPositionStored, POSITION_KIND_DSO,
-};
+use crate::models::{ObjectPositionInsert, ObjectPositionStored, POSITION_KIND_DSO};
 use crate::panels::LatLon;
 use crate::solarsystemcalc::{NightInfo, ObjectPosition, build_night_intervals};
 use diesel::{Connection, SqliteConnection};
@@ -82,10 +76,7 @@ pub fn nights_needing_selected_dso(
     for &date in dates {
         let existing =
             ObjectPositionStored::read_from_db_kind(conn, date, snapped, POSITION_KIND_DSO);
-        let have: HashSet<String> = existing
-            .iter()
-            .map(|p| normalize_dso_id(&p.name))
-            .collect();
+        let have: HashSet<String> = existing.iter().map(|p| normalize_dso_id(&p.name)).collect();
         if want.iter().any(|id| !have.contains(id)) {
             out.push(date);
         }
@@ -153,10 +144,7 @@ pub fn ensure_dso_positions(
     let existing =
         ObjectPositionStored::read_from_db_kind(conn, night.date, snapped, POSITION_KIND_DSO);
 
-    let have: HashSet<String> = existing
-        .iter()
-        .map(|p| normalize_dso_id(&p.name))
-        .collect();
+    let have: HashSet<String> = existing.iter().map(|p| normalize_dso_id(&p.name)).collect();
 
     let missing: Vec<String> = selected_ids
         .iter()
@@ -232,12 +220,46 @@ pub fn calculate_deep_sky_positions(
     let intervals = build_night_intervals(std::slice::from_ref(night), freq_minutes);
     let mut positions = Vec::new();
 
+    // Precompute per-object constants (RA/Dec parse + display name once).
+    struct TargetSample {
+        name: String,
+        ra: f64,
+        dec: f64,
+        mag: f64,
+    }
+    let samples: Vec<TargetSample> = targets
+        .iter()
+        .filter_map(|obj| {
+            let (ra, dec) = obj.ra_dec_rad()?;
+            let name = obj.display_id()?;
+            let mag = obj.v_mag.map(|m| m as f64).unwrap_or(99.0);
+            Some(TargetSample { name, ra, dec, mag })
+        })
+        .collect();
+
+    let lat_rad = lat_deg.to_radians();
+    let lon_rad = lon_deg.to_radians();
+
     for (date, ticks) in intervals {
         for datetime in ticks {
-            for obj in &targets {
-                if let Some(pos) = deep_sky_position_at(obj, date, datetime, lat_deg, lon_deg) {
-                    positions.push(pos);
-                }
+            let jd = unixtime_to_julian_day(datetime.timestamp());
+            let gmst = time::mn_sidr(jd);
+            for sample in &samples {
+                let ra_norm = angle::limit_to_two_PI(sample.ra);
+                let hour_angle = hr_angl_frm_observer_long(gmst, -lon_rad, sample.ra);
+                let (az, alt) = astro::loc_hz_frm_eq!(hour_angle, sample.dec, lat_rad);
+                positions.push(ObjectPosition {
+                    name: sample.name.clone(),
+                    utc_datetime: datetime,
+                    date,
+                    ra: ra_norm.to_degrees(),
+                    dec: sample.dec.to_degrees(),
+                    altitude: alt.to_degrees(),
+                    azimuth: angle::limit_to_360(az.to_degrees() + 180.0),
+                    magnitude: sample.mag,
+                    distance: 0.0,
+                    phase_ratio: 0.0,
+                });
             }
         }
     }
@@ -298,8 +320,8 @@ pub fn deep_sky_positions_at(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::deepsky::data::{parse_dms_to_degrees, parse_hms_to_degrees};
     use crate::MIGRATIONS;
+    use crate::deepsky::data::{parse_dms_to_degrees, parse_hms_to_degrees};
     use chrono::Duration;
     use diesel::Connection;
     use diesel_migrations::MigrationHarness;
@@ -321,13 +343,7 @@ mod tests {
             night_end_ms: DateTime::<Utc>::from_timestamp(1_723_420_800, 0).unwrap()
                 + Duration::hours(1),
         };
-        let (pos, meta) = calculate_deep_sky_positions(
-            &night,
-            48.85,
-            2.35,
-            30,
-            &["M31".into()],
-        );
+        let (pos, meta) = calculate_deep_sky_positions(&night, 48.85, 2.35, 30, &["M31".into()]);
         assert!(!pos.is_empty());
         assert!(meta.contains_key("M31"));
         assert!(pos.iter().all(|p| p.name == "M31"));
@@ -339,8 +355,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let url = path.to_str().unwrap().to_string();
         let mut conn = SqliteConnection::establish(&url).unwrap();
-        conn.run_pending_migrations(MIGRATIONS)
-            .expect("migrations");
+        conn.run_pending_migrations(MIGRATIONS).expect("migrations");
 
         let night = NightInfo {
             date: NaiveDate::from_ymd_opt(2026, 8, 11).unwrap(),
@@ -349,14 +364,7 @@ mod tests {
                 + Duration::hours(2),
         };
 
-        let (first, _) = ensure_dso_positions(
-            &mut conn,
-            &night,
-            48.85,
-            2.35,
-            30,
-            &["M31".into()],
-        );
+        let (first, _) = ensure_dso_positions(&mut conn, &night, 48.85, 2.35, 30, &["M31".into()]);
         assert!(!first.is_empty());
         let first_len = first.len();
 

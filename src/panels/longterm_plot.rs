@@ -100,6 +100,17 @@ pub struct LongTermPlot {
     pub dso_backfill_queue: Vec<NaiveDate>,
     /// True while a DSO backfill Bind is running.
     pub dso_backfill_pending: bool,
+    /// Skip full segment rebuild when sector/windows/selection/dates unchanged.
+    refresh_cache_key: Option<LtRefreshKey>,
+}
+
+#[derive(Clone, PartialEq)]
+struct LtRefreshKey {
+    lat_sector: f64,
+    lon_sector: f64,
+    view_windows: Vec<ViewWindow>,
+    selected_names: Vec<String>,
+    dates: Vec<NaiveDate>,
 }
 
 impl LongTermPlot {
@@ -120,6 +131,7 @@ impl LongTermPlot {
             goto_daily_date: None,
             dso_backfill_queue: Vec::new(),
             dso_backfill_pending: false,
+            refresh_cache_key: None,
         }
     }
 
@@ -129,12 +141,14 @@ impl LongTermPlot {
 
     /// Reload after a background prefetch without resetting the camera.
     pub fn reload_after_prefetch(&mut self) {
+        self.refresh_cache_key = None;
         self.refresh_from_db_inner(false);
         self.prefetch_start = None;
     }
 
     /// Reload after a DSO backfill batch (keeps camera; may leave more work in the queue).
     pub fn reload_after_dso_backfill(&mut self) {
+        self.refresh_cache_key = None;
         self.refresh_from_db_inner(false);
     }
 
@@ -156,6 +170,23 @@ impl LongTermPlot {
 
         let selected = self.catalog_select.selected_object_names();
         self.object_rows = selected.clone();
+
+        let key = LtRefreshKey {
+            lat_sector: snapped.lat,
+            lon_sector: snapped.lon,
+            view_windows: self.view_windows.clone(),
+            selected_names: selected.clone(),
+            dates: dates.clone(),
+        };
+        if self.refresh_cache_key.as_ref() == Some(&key) {
+            if reset_view {
+                self.reset_view = true;
+            }
+            let dso_ids = self.catalog_select.selected_dso_ids();
+            self.dso_backfill_queue =
+                nights_needing_selected_dso(&mut conn, snapped.lat, snapped.lon, &dates, &dso_ids);
+            return;
+        }
 
         let dso_ids = self.catalog_select.selected_dso_ids();
         // Queue nights that still need DSO computation (non-blocking; Bind fills them).
@@ -196,6 +227,7 @@ impl LongTermPlot {
         }
 
         self.nights = nights;
+        self.refresh_cache_key = Some(key);
         if reset_view {
             self.reset_view = true;
             self.last_prefetch_requested = None;
@@ -319,10 +351,7 @@ impl egui::Widget for &mut LongTermPlot {
         if self.ephemeris_pending {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(format!(
-                    "Caching next {} nights…",
-                    DAILY_PREFETCH_DAY_COUNT
-                ));
+                ui.label(format!("Caching next {} nights…", DAILY_PREFETCH_DAY_COUNT));
             });
         }
         if self.dso_backfill_pending || !self.dso_backfill_queue.is_empty() {
@@ -410,9 +439,7 @@ impl egui::Widget for &mut LongTermPlot {
             .show_y(false)
             .sense(Sense::click_and_drag())
             .custom_x_axes(vec![
-                AxisHints::new_x()
-                    .label("Date")
-                    .formatter(date_formatter),
+                AxisHints::new_x().label("Date").formatter(date_formatter),
             ])
             .x_grid_spacer(x_grid)
             .label_formatter(label_fmt);
@@ -498,11 +525,7 @@ impl egui::Widget for &mut LongTermPlot {
                     let color = get_object_color(&tip.name);
                     let key = series_key(&tip.name, tip.date);
                     let pts = egui_plot::PlotPoints::from_iter([[x, y]]);
-                    plot_ui.points(
-                        Points::new(key.clone(), pts)
-                            .radius(6.0)
-                            .color(color),
-                    );
+                    plot_ui.points(Points::new(key.clone(), pts).radius(6.0).color(color));
                     // Non-interactive label (unique id so it does not steal tip/click from the dot).
                     plot_ui.text(
                         Text::new(

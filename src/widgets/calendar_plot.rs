@@ -90,10 +90,10 @@ impl egui::Widget for &mut CalPlot {
         let utc_formatter = |value: egui_plot::GridMark, _range: &std::ops::RangeInclusive<f64>| {
             format_axis_utc(value.value as i64)
         };
-        let local_formatter = move |value: egui_plot::GridMark,
-                                    _range: &std::ops::RangeInclusive<f64>| {
-            format_axis_local(value.value as i64, output_timezone)
-        };
+        let local_formatter =
+            move |value: egui_plot::GridMark, _range: &std::ops::RangeInclusive<f64>| {
+                format_axis_local(value.value as i64, output_timezone)
+            };
 
         let x_grid = move |input: egui_plot::GridInput| {
             let mut marks = Vec::new();
@@ -106,7 +106,8 @@ impl egui::Widget for &mut CalPlot {
                 return marks;
             };
             // Align to next UTC hour boundary at or after start.
-            let mut t = start_dt - Duration::minutes(start_dt.minute() as i64)
+            let mut t = start_dt
+                - Duration::minutes(start_dt.minute() as i64)
                 - Duration::seconds(start_dt.second() as i64)
                 - Duration::nanoseconds(start_dt.nanosecond() as i64);
             if t < start_dt {
@@ -157,14 +158,8 @@ impl egui::Widget for &mut CalPlot {
             let xmin = ni.night_start_ms.timestamp_millis() as f64;
             let xmax = ni.night_end_ms.timestamp_millis() as f64;
 
-            plot_ui.vline(VLine::new(
-                "night_start",
-                xmin,
-            ));
-            plot_ui.vline(VLine::new(
-                "night_end",
-                xmax,
-            ));
+            plot_ui.vline(VLine::new("night_start", xmin));
+            plot_ui.vline(VLine::new("night_end", xmax));
 
             // Faintest first (low y); brightest last (high y = top of chart).
             let mut rows: Vec<(String, f64)> = self
@@ -209,13 +204,12 @@ impl egui::Widget for &mut CalPlot {
                     // ~45 minutes of night span → enough room for 3 lines of text.
                     let wide_enough = (max_x - min_x) >= 45.0 * 60_000.0;
 
-                    let points: egui_plot::PlotPoints<'_> =
-                        egui_plot::PlotPoints::from_iter(vec![
-                            [min_x, min_y],
-                            [min_x, max_y],
-                            [max_x, max_y],
-                            [max_x, min_y],
-                        ]);
+                    let points: egui_plot::PlotPoints<'_> = egui_plot::PlotPoints::from_iter(vec![
+                        [min_x, min_y],
+                        [min_x, max_y],
+                        [max_x, max_y],
+                        [max_x, min_y],
+                    ]);
 
                     // width 0: egui_plot auto-colors TRANSPARENT strokes, so zero width hides the border.
                     plot_ui.polygon(

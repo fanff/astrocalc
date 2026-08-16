@@ -26,11 +26,7 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// Phase angle at the ISS (degrees): Sun–ISS–observer.
 ///
 /// 0° = fully face-lit toward the observer; 180° = back-lit.
-pub fn phase_angle_deg(
-    sat_ecef_km: [f64; 3],
-    observer: &Observer,
-    utc: DateTime<Utc>,
-) -> f64 {
+pub fn phase_angle_deg(sat_ecef_km: [f64; 3], observer: &Observer, utc: DateTime<Utc>) -> f64 {
     let sun = sun_ecef_unit(utc);
     // Sun direction from ISS ≈ geocentric sun (Sun is far).
     let to_sun = sun;
@@ -65,8 +61,10 @@ fn phase_term_mag(phase_deg: f64) -> f64 {
 pub fn apparent_magnitude(range_km: f64, phase_deg: f64, altitude_deg: f64) -> f64 {
     let range = range_km.max(200.0);
     let dist_term = 5.0 * (range / 1000.0).log10();
-    let m =
-        ISS_STD_MAG_AT_1000KM + dist_term + phase_term_mag(phase_deg) + EXTINCTION_K_MAG * (airmass(altitude_deg) - 1.0);
+    let m = ISS_STD_MAG_AT_1000KM
+        + dist_term
+        + phase_term_mag(phase_deg)
+        + EXTINCTION_K_MAG * (airmass(altitude_deg) - 1.0);
     m
 }
 

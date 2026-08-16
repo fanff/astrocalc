@@ -96,9 +96,7 @@ impl Plugin for VectorBasemapPlugin<'_> {
                 if zoom < PLACE_LABEL_MIN_ZOOM && place.scalerank > 2.0 {
                     continue;
                 }
-                let screen = projector
-                    .project(lon_lat(place.lon, place.lat))
-                    .to_pos2();
+                let screen = projector.project(lon_lat(place.lon, place.lat)).to_pos2();
                 if !rect.contains(screen) {
                     continue;
                 }
@@ -139,12 +137,7 @@ impl Plugin for VectorBasemapPlugin<'_> {
     }
 }
 
-fn paint_closed_poly(
-    painter: &egui::Painter,
-    pts: Vec<Pos2>,
-    fill: Color32,
-    stroke: PathStroke,
-) {
+fn paint_closed_poly(painter: &egui::Painter, pts: Vec<Pos2>, fill: Color32, stroke: PathStroke) {
     painter.add(Shape::Path(egui::epaint::PathShape {
         points: pts,
         closed: true,
@@ -158,7 +151,9 @@ fn ring_centroid_lonlat(ring: &[[f64; 2]]) -> Option<[f64; 2]> {
         return None;
     }
     let n = ring.len() as f64;
-    let (sx, sy) = ring.iter().fold((0.0, 0.0), |(sx, sy), c| (sx + c[0], sy + c[1]));
+    let (sx, sy) = ring
+        .iter()
+        .fold((0.0, 0.0), |(sx, sy), c| (sx + c[0], sy + c[1]));
     Some([sx / n, sy / n])
 }
 

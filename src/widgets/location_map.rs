@@ -151,8 +151,7 @@ impl LocationMap {
     /// Returns `true` if the location changed.
     pub fn show(&mut self, ui: &mut Ui, lon: &mut f64, lat: &mut f64) -> bool {
         if !self.probe_finished() {
-            ui.ctx()
-                .request_repaint_after(Duration::from_millis(250));
+            ui.ctx().request_repaint_after(Duration::from_millis(250));
         }
 
         self.click.set_marker(*lon, *lat);
@@ -161,7 +160,8 @@ impl LocationMap {
         let (rect, _response) = ui.allocate_exact_size(desired, Sense::hover());
 
         // Ocean / empty background (vector land draws on top when offline).
-        ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(28, 40, 55));
+        ui.painter()
+            .rect_filled(rect, 2.0, Color32::from_rgb(28, 40, 55));
         ui.painter().rect_stroke(
             rect,
             2.0,
@@ -190,9 +190,7 @@ impl LocationMap {
         } else {
             Map::new(None, &mut self.map_memory, lon_lat(*lon, *lat))
                 .zoom_with_ctrl(false)
-                .with_plugin(VectorBasemapPlugin {
-                    data: &self.vector,
-                })
+                .with_plugin(VectorBasemapPlugin { data: &self.vector })
                 .with_plugin(&mut self.click)
         };
         child.add(map);

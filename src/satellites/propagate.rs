@@ -172,14 +172,15 @@ mod tests {
 
     #[test]
     fn parse_and_propagate_at_epoch() {
-        let prop =
-            Propagator::from_tle(Some("ISS (ZARYA)"), fixtures::ISS_TLE_L1, fixtures::ISS_TLE_L2)
-                .unwrap();
+        let prop = Propagator::from_tle(
+            Some("ISS (ZARYA)"),
+            fixtures::ISS_TLE_L1,
+            fixtures::ISS_TLE_L2,
+        )
+        .unwrap();
         let pred = prop.predict_at_minutes(0.0).unwrap();
-        let r = (pred.position[0].powi(2)
-            + pred.position[1].powi(2)
-            + pred.position[2].powi(2))
-        .sqrt();
+        let r =
+            (pred.position[0].powi(2) + pred.position[1].powi(2) + pred.position[2].powi(2)).sqrt();
         assert!(
             (6500.0..7200.0).contains(&r),
             "unexpected geocentric range {r} km {:?}",

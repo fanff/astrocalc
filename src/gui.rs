@@ -7,15 +7,11 @@ use crate::{
     panels::dailysolar::{DAILY_PREFETCH_DAY_COUNT, DailySolar, SAMPLE_FREQ_MINUTES},
     panels::iss::IssPanelState,
     panels::longterm_plot::LongTermPlot,
-    satellites::{
-        ISS_PREDICT_DAY_COUNT, IssPredictionBundle, TleCache, fetch_and_predict,
-    },
+    satellites::{ISS_PREDICT_DAY_COUNT, IssPredictionBundle, TleCache, fetch_and_predict},
     solarsystemcalc::calculate_solar_system_positions,
     timezone_util::site_tz_from_lat_lon,
     weather_cache::{Location, WeatherCache, WeatherRequest, WeatherSnapshot, noon_utc_for_date},
-    widgets::{
-        location_map::LocationMap, view_window_editor::ViewWindowEditorState,
-    },
+    widgets::{location_map::LocationMap, view_window_editor::ViewWindowEditorState},
 };
 use chrono::{DateTime, NaiveDate, offset::Utc};
 use diesel::Connection;
@@ -143,7 +139,15 @@ impl AstroCalcApp {
             self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
             self.iss_data.view_windows = self.view_windows.clone();
             self.iss_data.set_local_tz(self.selected_output_tz_obj);
-            self.iss_data.request_predict = true;
+            if self
+                .iss_data
+                .reload_cached_only(&self.database_url, &self.tle_cache)
+            {
+                self.iss_done_key = Some(self.iss_key(false));
+                self.iss_data.request_predict = false;
+            } else {
+                self.iss_data.request_predict = true;
+            }
         }
         ui.separator();
     }
@@ -303,14 +307,7 @@ impl AstroCalcApp {
         let lon = snapped.lon;
         self.long_term_data.dso_backfill_pending = true;
         self.long_term_dso_bind.refresh(async move {
-            ensure_dso_batch(
-                &db,
-                lat,
-                lon,
-                SAMPLE_FREQ_MINUTES,
-                &ids,
-                &batch,
-            );
+            ensure_dso_batch(&db, lat, lon, SAMPLE_FREQ_MINUTES, &ids, &batch);
             Ok(())
         });
     }
@@ -512,12 +509,11 @@ impl AstroCalcApp {
         }
 
         if self.iss_req_key == Some(key) && self.iss_done_key != Some(key) {
-            let outcome: Option<Result<IssPredictionBundle, String>> =
-                match self.iss_bind.read() {
-                    Some(Ok(bundle)) => Some(Ok(bundle.clone())),
-                    Some(Err(e)) => Some(Err(e.clone())),
-                    None => None,
-                };
+            let outcome: Option<Result<IssPredictionBundle, String>> = match self.iss_bind.read() {
+                Some(Ok(bundle)) => Some(Ok(bundle.clone())),
+                Some(Err(e)) => Some(Err(e.clone())),
+                None => None,
+            };
             if let Some(res) = outcome {
                 match res {
                     Ok(bundle) => {
@@ -539,11 +535,7 @@ impl AstroCalcApp {
         }
 
         if !force
-            && self
-                .iss_done_key
-                .as_ref()
-                .map(|k| (k.0, k.1, k.2))
-                == Some((key.0, key.1, key.2))
+            && self.iss_done_key.as_ref().map(|k| (k.0, k.1, k.2)) == Some((key.0, key.1, key.2))
         {
             self.iss_data.request_predict = false;
             return;
@@ -596,14 +588,16 @@ impl eframe::App for AstroCalcApp {
                         self.panel_view = 2;
                         self.daily_solar_data.date = date;
                         self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
-                        self.daily_solar_data.set_local_tz(self.selected_output_tz_obj);
+                        self.daily_solar_data
+                            .set_local_tz(self.selected_output_tz_obj);
                         self.daily_solar_data.view_windows = self.view_windows.clone();
                         self.daily_solar_data.refresh_positions();
                     }
                 }
                 if self.panel_view == 2 {
                     self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
-                    self.daily_solar_data.set_local_tz(self.selected_output_tz_obj);
+                    self.daily_solar_data
+                        .set_local_tz(self.selected_output_tz_obj);
                     self.daily_solar_data.view_windows = self.view_windows.clone();
                     self.ensure_ephemeris_prefetch();
                     self.refresh_weather_if_needed();

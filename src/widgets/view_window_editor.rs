@@ -1,8 +1,6 @@
 //! Interactive polar editor for visibility zones (`ViewWindow`).
 
-use egui::{
-    Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2, epaint::PathStroke,
-};
+use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2, epaint::PathStroke};
 
 use crate::config::{ViewWindow, normalize_az};
 use crate::widgets::sky_polar::{HORIZON_R, arc_points, az_alt_to_xy, circle_points, xy_to_az_alt};
@@ -298,12 +296,7 @@ impl egui::Widget for ViewWindowEditor<'_> {
 }
 
 /// `screen_pts` is outer arc then reversed inner arc (closed ring).
-fn paint_annulus(
-    painter: &egui::Painter,
-    screen_pts: &[Pos2],
-    fill: Color32,
-    outline: PathStroke,
-) {
+fn paint_annulus(painter: &egui::Painter, screen_pts: &[Pos2], fill: Color32, outline: PathStroke) {
     let n = screen_pts.len();
     if n < 4 || n % 2 != 0 {
         painter.add(Shape::closed_line(screen_pts.to_vec(), outline));
