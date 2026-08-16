@@ -7,6 +7,7 @@ use crate::{
     panels::dailysolar::{DAILY_PREFETCH_DAY_COUNT, DailySolar, SAMPLE_FREQ_MINUTES},
     panels::iss::IssPanelState,
     panels::longterm_plot::LongTermPlot,
+    panels::longterm_timeline::LongTermTimeline,
     satellites::{ISS_PREDICT_DAY_COUNT, IssPredictionBundle, TleCache, fetch_and_predict},
     solarsystemcalc::calculate_solar_system_positions,
     timezone_util::site_tz_from_lat_lon,
@@ -54,6 +55,7 @@ pub struct AstroCalcApp {
     pub selected_output_tz_obj: chrono_tz::Tz,
 
     pub long_term_data: LongTermPlot,
+    pub night_tracks_data: LongTermTimeline,
     pub daily_solar_data: DailySolar,
     pub iss_data: IssPanelState,
     pub database_url: String,
@@ -97,6 +99,7 @@ impl AstroCalcApp {
             selected_output_tz: site_tz.name().to_string(),
             selected_output_tz_obj: site_tz,
             long_term_data: LongTermPlot::new(LatLon::new(lat, long), database_url.clone()),
+            night_tracks_data: LongTermTimeline::new(LatLon::new(lat, long), database_url.clone()),
             daily_solar_data: DailySolar::new(
                 Utc::now().date_naive(),
                 LatLon::new(lat, long),
@@ -122,6 +125,7 @@ impl AstroCalcApp {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.panel_view, 0, "Config");
             ui.selectable_value(&mut self.panel_view, 1, "Long Term");
+            ui.selectable_value(&mut self.panel_view, 4, "Night Tracks");
             ui.selectable_value(&mut self.panel_view, 2, "Daily");
             ui.selectable_value(&mut self.panel_view, 3, "ISS");
         });
@@ -134,6 +138,11 @@ impl AstroCalcApp {
             self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
             self.long_term_data.view_windows = self.view_windows.clone();
             self.long_term_data.refresh_from_db();
+        }
+        if self.panel_view == 4 && prev != 4 {
+            self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
+            self.night_tracks_data.view_windows = self.view_windows.clone();
+            self.night_tracks_data.refresh_from_db();
         }
         if self.panel_view == 3 && prev != 3 {
             self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
@@ -169,6 +178,7 @@ impl AstroCalcApp {
             self.sync_site_timezone_from_map();
             self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
             self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
+            self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
             self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
             self.iss_data.view_windows = self.view_windows.clone();
             self.ephemeris_req_key = None;
@@ -183,6 +193,8 @@ impl AstroCalcApp {
             self.daily_solar_data.refresh_positions();
             self.long_term_data.view_windows = self.view_windows.clone();
             self.long_term_data.refresh_from_db();
+            self.night_tracks_data.view_windows = self.view_windows.clone();
+            self.night_tracks_data.refresh_from_db();
         }
     }
 
@@ -212,23 +224,32 @@ impl AstroCalcApp {
         )
     }
 
+    fn merged_long_term_prefetch_start(&self) -> Option<NaiveDate> {
+        self.long_term_data
+            .prefetch_start
+            .or(self.night_tracks_data.prefetch_start)
+    }
+
     fn ensure_long_term_prefetch(&mut self) {
         let pending = self.long_term_bind.is_pending();
         self.long_term_data.ephemeris_pending = pending;
+        self.night_tracks_data.ephemeris_pending = pending;
 
         if pending {
             return;
         }
 
-        if let Some(start) = self.long_term_data.prefetch_start {
+        if let Some(start) = self.merged_long_term_prefetch_start() {
             let key = self.long_term_prefetch_key(start);
             if self.long_term_req_key == Some(key) && self.long_term_done_key != Some(key) {
                 if let Some(res) = self.long_term_bind.read() {
                     if res.is_ok() {
                         self.long_term_done_key = Some(key);
                         self.long_term_data.reload_after_prefetch();
+                        self.night_tracks_data.reload_after_prefetch();
                     } else {
                         self.long_term_data.prefetch_start = None;
+                        self.night_tracks_data.prefetch_start = None;
                     }
                     return;
                 }
@@ -236,6 +257,7 @@ impl AstroCalcApp {
 
             if self.long_term_done_key == Some(key) {
                 self.long_term_data.prefetch_start = None;
+                self.night_tracks_data.prefetch_start = None;
                 return;
             }
 
@@ -243,6 +265,7 @@ impl AstroCalcApp {
             let snapped = self.long_term_data.lat_lon.snap(2);
             let db = self.database_url.clone();
             self.long_term_data.ephemeris_pending = true;
+            self.night_tracks_data.ephemeris_pending = true;
             self.long_term_bind.refresh(async move {
                 calculate_solar_system_positions(
                     start,
@@ -260,6 +283,7 @@ impl AstroCalcApp {
     fn ensure_long_term_dso_backfill(&mut self) {
         let pending = self.long_term_dso_bind.is_pending();
         self.long_term_data.dso_backfill_pending = pending;
+        self.night_tracks_data.dso_backfill_pending = pending;
 
         if pending {
             return;
@@ -272,20 +296,34 @@ impl AstroCalcApp {
                     if res.is_ok() {
                         self.long_term_dso_done_key = Some(key);
                         self.long_term_data.reload_after_dso_backfill();
+                        self.night_tracks_data.reload_after_dso_backfill();
                     }
                     self.long_term_dso_batch_key = None;
                 }
             }
         }
 
-        if self.long_term_data.dso_backfill_queue.is_empty() {
+        if self.long_term_data.dso_backfill_queue.is_empty()
+            && self.night_tracks_data.dso_backfill_queue.is_empty()
+        {
             self.long_term_data.dso_backfill_pending = false;
+            self.night_tracks_data.dso_backfill_pending = false;
             return;
         }
 
-        let batch = self
-            .long_term_data
-            .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize);
+        let (batch, ids) = if !self.long_term_data.dso_backfill_queue.is_empty() {
+            (
+                self.long_term_data
+                    .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize),
+                self.long_term_data.catalog_select.selected_dso_ids(),
+            )
+        } else {
+            (
+                self.night_tracks_data
+                    .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize),
+                self.night_tracks_data.catalog_select.selected_dso_ids(),
+            )
+        };
         if batch.is_empty() {
             return;
         }
@@ -302,10 +340,10 @@ impl AstroCalcApp {
         self.long_term_dso_done_key = None;
 
         let db = self.database_url.clone();
-        let ids = self.long_term_data.catalog_select.selected_dso_ids();
         let lat = snapped.lat;
         let lon = snapped.lon;
         self.long_term_data.dso_backfill_pending = true;
+        self.night_tracks_data.dso_backfill_pending = true;
         self.long_term_dso_bind.refresh(async move {
             ensure_dso_batch(&db, lat, lon, SAMPLE_FREQ_MINUTES, &ids, &batch);
             Ok(())
@@ -328,8 +366,9 @@ impl AstroCalcApp {
                     self.ephemeris_done_key = Some(key);
                     self.daily_solar_data.reload_cached_only();
                     self.daily_solar_data.request_ephemeris_prefetch = false;
-                    if self.panel_view == 1 {
+                    if self.panel_view == 1 || self.panel_view == 4 {
                         self.long_term_data.refresh_from_db();
+                        self.night_tracks_data.refresh_from_db();
                     }
                 } else {
                     self.daily_solar_data.request_ephemeris_prefetch = false;
@@ -585,6 +624,25 @@ impl eframe::App for AstroCalcApp {
                     self.ensure_long_term_prefetch();
                     self.ensure_long_term_dso_backfill();
                     if let Some(date) = self.long_term_data.goto_daily_date.take() {
+                        self.panel_view = 2;
+                        self.daily_solar_data.date = date;
+                        self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
+                        self.daily_solar_data
+                            .set_local_tz(self.selected_output_tz_obj);
+                        self.daily_solar_data.view_windows = self.view_windows.clone();
+                        self.daily_solar_data.refresh_positions();
+                    }
+                }
+                if self.panel_view == 4 {
+                    self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
+                    self.night_tracks_data.local_tz = self.selected_output_tz_obj;
+                    self.night_tracks_data.view_windows = self.view_windows.clone();
+                    self.ensure_long_term_prefetch();
+                    self.ensure_long_term_dso_backfill();
+                    ui.add(&mut self.night_tracks_data);
+                    self.ensure_long_term_prefetch();
+                    self.ensure_long_term_dso_backfill();
+                    if let Some(date) = self.night_tracks_data.goto_daily_date.take() {
                         self.panel_view = 2;
                         self.daily_solar_data.date = date;
                         self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);

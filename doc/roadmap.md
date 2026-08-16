@@ -33,6 +33,7 @@ Close gaps in the solar-system family.
 - Complete Sun handling alongside planets and Moon
 - Verify magnitudes, phase (Moon), and night/day edge cases
 - [x] **Long Term** panel: presence overview from DB (date × object dots, ≥20 min in view; no weather)
+- [x] **Night Tracks** panel: multi-night timeline (night hours × dates; twilight clear-sky background; altitude-encoded object segments; no weather)
 - [x] Solar System calc panel removed — Daily prefetches selected night + 10 days in background
 - Keep Daily and Long Term on the same position types and filters
 
