@@ -104,6 +104,56 @@ pub fn darken_for_bar_fill(color: Color32) -> Color32 {
     )
 }
 
+/// Map altitude (degrees, clamped 0–90) to a hue gradient for night-timeline segments.
+/// Low altitude → warm red/orange; high → cool blue/white.
+pub fn altitude_to_color(alt_deg: f64) -> Color32 {
+    let alt = alt_deg.clamp(0.0, 90.0);
+    let t = alt / 90.0;
+    // HSV: hue 0° (red) → 210° (blue); saturation/v fixed for dark plot backgrounds.
+    let h = (1.0 - t) * 30.0 + t * 210.0;
+    let s = 0.75_f32;
+    let v = 0.92_f32;
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = match (h / 60.0) as i32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    Color32::from_rgb(
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
+}
+
+/// Sky darkness from solar altitude (degrees). 0 = bright twilight, 1 = deep night.
+/// Uses nautical twilight (−6°) and astronomical twilight (−18°) as anchors.
+pub fn sky_darkness_from_sun_alt(sun_alt_deg: f64) -> f32 {
+    if sun_alt_deg >= -6.0 {
+        let t = ((sun_alt_deg + 6.0) / 6.0).clamp(0.0, 1.0);
+        return (0.35 * (1.0 - t)) as f32;
+    }
+    if sun_alt_deg <= -18.0 {
+        return 1.0;
+    }
+    let t = ((sun_alt_deg + 18.0) / 12.0).clamp(0.0, 1.0);
+    (0.35 + 0.65 * t) as f32
+}
+
+/// RGB fill for a clear-sky twilight strip at the given darkness level.
+pub fn sky_darkness_to_color(darkness: f32) -> Color32 {
+    let d = darkness.clamp(0.0, 1.0);
+    let r = (18.0 + 55.0 * (1.0 - d)) as u8;
+    let g = (22.0 + 48.0 * (1.0 - d)) as u8;
+    let b = (38.0 + 72.0 * d) as u8;
+    Color32::from_rgb(r, g, b)
+}
+
 // make a static hash map of planet name to index in Planet Name
 pub const OBJECT_NAME_TO_INDEX: phf::Map<&'static str, usize> = phf::phf_map! {
     "Mercury" => 0,
@@ -664,4 +714,27 @@ pub fn calculate_solar_system_positions(
     }
 
     (object_positions, nights)
+}
+
+#[cfg(test)]
+mod tests_sky_viz {
+    use super::*;
+
+    #[test]
+    fn altitude_to_color_monotonic_hue() {
+        let low = altitude_to_color(5.0);
+        let high = altitude_to_color(80.0);
+        assert!(high.b() > low.b());
+        assert!(low.r() >= high.r() || low.g() > high.g());
+    }
+
+    #[test]
+    fn sky_darkness_deeper_when_sun_lower() {
+        let dusk = sky_darkness_from_sun_alt(-3.0);
+        let nautical = sky_darkness_from_sun_alt(-10.0);
+        let astro = sky_darkness_from_sun_alt(-20.0);
+        assert!(nautical > dusk);
+        assert!(astro > nautical);
+        assert_eq!(sky_darkness_from_sun_alt(-25.0), 1.0);
+    }
 }
