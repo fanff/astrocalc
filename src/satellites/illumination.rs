@@ -160,6 +160,18 @@ pub fn sun_alt_az(observer: &Observer, utc: DateTime<Utc>) -> (f64, f64) {
     )
 }
 
+/// Geocentric lunar altitude (degrees) for the observer (no refraction).
+pub fn observer_moon_altitude_deg(observer: &Observer, utc: DateTime<Utc>) -> f64 {
+    let jd = unixtime_to_julian_day(utc.timestamp());
+    let gmst = time::mn_sidr(jd);
+    let (ra, dec, _) = moon_radec_dist(utc);
+    let lat_rad = observer.lat_deg.to_radians();
+    let lon_rad = observer.lon_deg.to_radians();
+    let hour_angle = coords_hour_angle(gmst, lon_rad, ra);
+    let (_az, alt) = astro::loc_hz_frm_eq!(hour_angle, dec, lat_rad);
+    alt.to_degrees()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

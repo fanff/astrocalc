@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use chrono_tz::Tz;
 use diesel::{Connection, SqliteConnection};
 use egui::Response;
@@ -8,7 +8,7 @@ use crate::deepsky::{cached_dso_positions, nights_needing_selected_dso};
 use crate::models::{DateInfo, ObjectPositionStored};
 use crate::panels::LatLon;
 use crate::panels::dailysolar::DAILY_PREFETCH_DAY_COUNT;
-use crate::solarsystemcalc::{NightInfo, ObjectPositionSegments};
+use crate::solarsystemcalc::ObjectPositionSegments;
 use crate::widgets::catalog_select::CatalogSelection;
 use crate::widgets::night_timeline_plot::{NightTimelinePlot, NightTimelineRow};
 
@@ -151,11 +151,13 @@ impl LongTermTimeline {
                     &selected,
                 )
             };
-            rows.push(NightTimelineRow {
+            rows.push(NightTimelineRow::new(
                 date,
                 night,
                 segments,
-            });
+                self.lat_lon.lat,
+                self.lat_lon.lon,
+            ));
         }
 
         self.plot.rows = rows;

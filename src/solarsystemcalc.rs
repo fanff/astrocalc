@@ -110,7 +110,7 @@ pub fn altitude_to_color(alt_deg: f64) -> Color32 {
     let alt = alt_deg.clamp(0.0, 90.0);
     let t = alt / 90.0;
     // HSV: hue 0° (red) → 210° (blue); saturation/v fixed for dark plot backgrounds.
-    let h = (1.0 - t) * 30.0 + t * 210.0;
+    let h = ((1.0 - t) * 30.0 + t * 210.0) as f32;
     let s = 0.75_f32;
     let v = 0.92_f32;
     let c = v * s;

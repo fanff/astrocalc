@@ -15,8 +15,9 @@ mod transit;
 pub use brightness::{cloud_label, magnitude_phrase, naked_eye_label};
 pub use events::{DiskBody, DiskTransit, IssEventKind, TrackSample, VisiblePass};
 pub use illumination::{
-    DEFAULT_OBSERVER_SUN_MAX_ALT_DEG, moon_illum_pct, moon_phase_label, observer_sky_dark,
-    observer_sun_altitude_deg, pass_illumination_ok, satellite_sunlit, sun_semi_diameter_deg,
+    DEFAULT_OBSERVER_SUN_MAX_ALT_DEG, moon_illum_pct, moon_phase_label, observer_moon_altitude_deg,
+    observer_sky_dark, observer_sun_altitude_deg, pass_illumination_ok, satellite_sunlit,
+    sun_semi_diameter_deg,
 };
 pub use passes::{PassSearchParams, find_passes};
 pub use propagate::{Observer, Propagator, Topocentric};
