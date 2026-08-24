@@ -13,17 +13,16 @@ Pick your site, define the parts of the sky you can actually see, then find when
 - **Scan multiple nights** — Night Tracks timeline from cache (twilight background, altitude-colored segments), with the same catalog selection as Daily
 - **Check observing conditions** — weather context (clouds, humidity, wind) for the selected location and night
 - **Plan ISS views** — dedicated ISS tab: ~60-day list of sunlit dusk/dawn passes and Sun/Moon disk transit/near-miss opportunities (fresh TLE from Celestrak)
-- **Work offline for setup** — Config map falls back to an embedded vector basemap (countries, French regions, key cities) when the network is unavailable
 
 ## Coming next
 
+- Weather as a planning / visibility input
+- Complete Sun handling alongside planets and Moon
 - Deeper magnitude / FOV planning filters shared across object kinds
-- ISS conjunctions with planets or deep-sky targets
-- Telescope field of view, magnitude limits, and expected frame preview
 
 ## Status
 
-Early and actively developed. Solar-system and deep-sky nightly planning, Daily visualization, Night Tracks multi-night timeline, weather, and a dedicated ISS opportunities view are usable today. Hardware preview remains on the roadmap.
+Early and actively developed. Solar-system and deep-sky nightly planning, Daily visualization, Night Tracks multi-night timeline, weather, and a dedicated ISS opportunities view are usable today.
 
 ## Download
 

@@ -14,14 +14,13 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 |--------|------|--------|
 | [`src/gui.rs`](../src/gui.rs) | `AstroCalcApp` shell, panel routing, shared session state (lat/lon, view windows, binds) | Deep ephemeris math; keep growing god-object fields in check |
 | [`src/panels/`](../src/panels/) | Screen-level UI: `LatLon`, Config, Daily, Night Tracks | Reusable plot primitives (those go in widgets) |
-| [`src/panels/config.rs`](../src/panels/config.rs) | Config layout: location map, visibility zones, Save → SQLite | Schema definitions; GeoJSON parsing |
+| [`src/panels/config.rs`](../src/panels/config.rs) | Config layout: location map, visibility zones, Save → SQLite | Schema definitions |
 | [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load cached day, request background prefetch (day+10), object flags, optional view-zone filter toggle, weather panel, compose sky + calendar plots | Weather HTTP; ISS; raw Diesel schema details if a repository helper exists |
 | [`src/panels/iss.rs`](../src/panels/iss.rs) | ISS opportunities view: cache-first `reload_cached_only` from `iss_events`, then Bind predict on miss; ~60-day list of sunlit passes + Sun/Moon disk events | TLE HTTP / SGP4 (lives in `satellites`) |
 | [`src/panels/night_tracks.rs`](../src/panels/night_tracks.rs) | Multi-night night-bar timeline (twilight background, altitude-colored segments; catalog selection; optional view-zone filter toggle; zoomable) | Weather overlay; duplicate cache loaders without sharing prefetch |
 | [`src/widgets/night_timeline_plot.rs`](../src/widgets/night_timeline_plot.rs) | Reusable multi-night timeline plot (clear-sky twilight strips + altitude segments) | DB/cache loading (panel owns that) |
 | [`src/widgets/`](../src/widgets/) | Reusable controls/plots: sky map, polar helpers, view-window zone editor, location map, calendar plot, weather panel, ISS opportunity helpers, catalog selection | Opening DB connections; owning app-wide config |
-| [`src/widgets/location_map.rs`](../src/widgets/location_map.rs) | OSM `HttpTiles` + offline vector basemap, click marker, online probe / mode | Config Save; view-window editing |
-| [`src/widgets/vector_basemap.rs`](../src/widgets/vector_basemap.rs) | Parse/paint embedded GeoJSON (countries, FR regions, places) via walkers `Plugin` | HTTP tiles; config persistence |
+| [`src/widgets/location_map.rs`](../src/widgets/location_map.rs) | OSM `HttpTiles`, click marker, online probe / mode | Config Save; view-window editing |
 | [`src/widgets/iss_panel.rs`](../src/widgets/iss_panel.rs) | Merge/sort ISS opportunities for the ISS panel list | TLE fetch; SGP4 |
 
 ## Domain layer
@@ -51,7 +50,6 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 |------|------|
 | `src/deepsky/ngc-ic-messier-catalog.csv` | Embedded DSO catalog |
 | `database.db` | Local SQLite (settings + ephemeris cache) |
-| `assets/vector_map/` | Offline vector basemap GeoJSON (countries, France regions, places) |
 | `assets/icon.svg` / `assets/icon.png` | App icon (SVG source; PNG embedded for the window) |
 | `my_weather_app/` | Weather YAML cache directory |
 | `my_tle_cache/` | ISS TLE JSON cache (`iss_tle.json`) |

@@ -36,7 +36,7 @@ When `app_settings` has no row, the app seeds:
 
 Edited visually in Config via the polar sky circle ([`src/widgets/view_window_editor.rs`](../src/widgets/view_window_editor.rs)): same N-up projection as Daily (`r = 90 − alt`). Drag yellow corner handles to reshape a zone; **Add zone** creates a default sector.
 
-Observer lat/lon is set from the Config location map ([`src/widgets/location_map.rs`](../src/widgets/location_map.rs)): OpenStreetMap when online, otherwise an embedded vector basemap ([`src/widgets/vector_basemap.rs`](../src/widgets/vector_basemap.rs) + `assets/vector_map/*.geojson`). Layout lives in [`src/panels/config.rs`](../src/panels/config.rs); **Save** upserts `app_settings`.
+Observer lat/lon is set from the Config location map ([`src/widgets/location_map.rs`](../src/widgets/location_map.rs)): OpenStreetMap tiles when online; offline mode shows a blank map but still accepts click-to-set coordinates. Layout lives in [`src/panels/config.rs`](../src/panels/config.rs); **Save** upserts `app_settings`.
 
 ### Environment
 

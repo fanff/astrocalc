@@ -313,7 +313,6 @@ dependencies = [
  "egui-async",
  "egui_extras",
  "egui_plot",
- "geojson",
  "julian_day_converter",
  "libsqlite3-sys",
  "once_cell",
@@ -1807,19 +1806,6 @@ dependencies = [
  "approx",
  "num-traits",
  "serde",
-]
-
-[[package]]
-name = "geojson"
-version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e26f3c45b36fccc9cf2805e61d4da6bc4bbd5a3a9589b01afa3a40eff703bd79"
-dependencies = [
- "geo-types",
- "log",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
 ]
 
 [[package]]

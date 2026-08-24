@@ -1,4 +1,4 @@
-//! Location map: OSM online tiles with offline vector basemap fallback.
+//! Location map: OSM online tiles with blank fallback when offline.
 
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::Arc;
@@ -11,14 +11,12 @@ use walkers::{
     sources::OpenStreetMap,
 };
 
-use crate::widgets::vector_basemap::{VectorBasemap, VectorBasemapPlugin};
-
 /// OSM tile host used for a cheap reachability probe.
 const OSM_PROBE_HOST: &str = "tile.openstreetmap.org:443";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MapTileMode {
-    /// Use OSM when reachable, otherwise vector basemap.
+    /// Use OSM when reachable, otherwise no tiles.
     Auto,
     Online,
     Offline,
@@ -77,13 +75,12 @@ impl Plugin for &mut LocationClickPlugin {
     }
 }
 
-/// Holds online OSM tiles + offline vector basemap and map interaction state.
+/// Holds OSM tiles and map interaction state.
 pub struct LocationMap {
     pub http_tiles: HttpTiles,
     pub map_memory: MapMemory,
     pub click: LocationClickPlugin,
     pub mode: MapTileMode,
-    vector: VectorBasemap,
     online_ok: Arc<AtomicBool>,
     probe_done: Arc<AtomicBool>,
 }
@@ -109,7 +106,6 @@ impl LocationMap {
             map_memory,
             click: LocationClickPlugin::new(lon, lat),
             mode: MapTileMode::Auto,
-            vector: VectorBasemap::load(),
             online_ok,
             probe_done,
         }
@@ -130,7 +126,6 @@ impl LocationMap {
             MapTileMode::Offline => false,
             MapTileMode::Auto => {
                 if !self.probe_finished() {
-                    // Prefer vector while probing (instant offline-capable UI).
                     false
                 } else {
                     self.osm_reachable()
@@ -143,7 +138,7 @@ impl LocationMap {
         if self.use_online() {
             "Active: OSM".into()
         } else {
-            "Active: vector basemap".into()
+            "Active: offline (no tiles)".into()
         }
     }
 
@@ -159,7 +154,6 @@ impl LocationMap {
         let desired = ui.available_size().max(Vec2::splat(160.0));
         let (rect, _response) = ui.allocate_exact_size(desired, Sense::hover());
 
-        // Ocean / empty background (vector land draws on top when offline).
         ui.painter()
             .rect_filled(rect, 2.0, Color32::from_rgb(28, 40, 55));
         ui.painter().rect_stroke(
@@ -190,7 +184,6 @@ impl LocationMap {
         } else {
             Map::new(None, &mut self.map_memory, lon_lat(*lon, *lat))
                 .zoom_with_ctrl(false)
-                .with_plugin(VectorBasemapPlugin { data: &self.vector })
                 .with_plugin(&mut self.click)
         };
         child.add(map);

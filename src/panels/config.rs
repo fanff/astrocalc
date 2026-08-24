@@ -72,7 +72,7 @@ impl ConfigPanel<'_> {
             ui.radio_value(
                 &mut self.location_map.mode,
                 MapTileMode::Offline,
-                "Offline (vector)",
+                "Offline (no tiles)",
             );
             ui.separator();
             ui.weak(self.location_map.status_label());
