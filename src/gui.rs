@@ -6,8 +6,7 @@ use crate::{
     panels::config::ConfigPanel,
     panels::dailysolar::{DAILY_PREFETCH_DAY_COUNT, DailySolar, SAMPLE_FREQ_MINUTES},
     panels::iss::IssPanelState,
-    panels::longterm_plot::LongTermPlot,
-    panels::longterm_timeline::LongTermTimeline,
+    panels::night_tracks::NightTracksPanel,
     satellites::{ISS_PREDICT_DAY_COUNT, IssPredictionBundle, TleCache, fetch_and_predict},
     solarsystemcalc::calculate_solar_system_positions,
     timezone_util::site_tz_from_lat_lon,
@@ -34,14 +33,14 @@ pub struct AstroCalcApp {
     pub ephemeris_req_key: Option<(NaiveDate, i64, i64)>,
     /// Last key for which Daily ephemeris Bind completed successfully.
     pub ephemeris_done_key: Option<(NaiveDate, i64, i64)>,
-    /// Long Term pan-triggered prefetch (batches of 10 nights).
-    pub long_term_bind: Bind<(), String>,
-    pub long_term_req_key: Option<(NaiveDate, i64, i64)>,
-    pub long_term_done_key: Option<(NaiveDate, i64, i64)>,
-    /// Long Term DSO backfill (batches of 10 nights for newly selected catalog objects).
-    pub long_term_dso_bind: Bind<(), String>,
-    pub long_term_dso_batch_key: Option<(NaiveDate, usize, i64, i64)>,
-    pub long_term_dso_done_key: Option<(NaiveDate, usize, i64, i64)>,
+    /// Night Tracks pan-triggered prefetch (batches of 10 nights).
+    pub night_tracks_bind: Bind<(), String>,
+    pub night_tracks_req_key: Option<(NaiveDate, i64, i64)>,
+    pub night_tracks_done_key: Option<(NaiveDate, i64, i64)>,
+    /// Night Tracks DSO backfill (batches of 10 nights for newly selected catalog objects).
+    pub night_tracks_dso_bind: Bind<(), String>,
+    pub night_tracks_dso_batch_key: Option<(NaiveDate, usize, i64, i64)>,
+    pub night_tracks_dso_done_key: Option<(NaiveDate, usize, i64, i64)>,
     pub weather_cache: WeatherCache,
     pub weather_bind: Bind<WeatherSnapshot, String>,
     pub weather_req_key: Option<(NaiveDate, i64, i64)>,
@@ -54,8 +53,7 @@ pub struct AstroCalcApp {
     pub selected_output_tz: String,
     pub selected_output_tz_obj: chrono_tz::Tz,
 
-    pub long_term_data: LongTermPlot,
-    pub night_tracks_data: LongTermTimeline,
+    pub night_tracks_data: NightTracksPanel,
     pub daily_solar_data: DailySolar,
     pub iss_data: IssPanelState,
     pub database_url: String,
@@ -83,12 +81,12 @@ impl AstroCalcApp {
             ephemeris_bind: Bind::new(false),
             ephemeris_req_key: None,
             ephemeris_done_key: None,
-            long_term_bind: Bind::new(false),
-            long_term_req_key: None,
-            long_term_done_key: None,
-            long_term_dso_bind: Bind::new(false),
-            long_term_dso_batch_key: None,
-            long_term_dso_done_key: None,
+            night_tracks_bind: Bind::new(false),
+            night_tracks_req_key: None,
+            night_tracks_done_key: None,
+            night_tracks_dso_bind: Bind::new(false),
+            night_tracks_dso_batch_key: None,
+            night_tracks_dso_done_key: None,
             weather_cache,
             weather_bind: Bind::new(true),
             weather_req_key: None,
@@ -98,8 +96,7 @@ impl AstroCalcApp {
             iss_done_key: None,
             selected_output_tz: site_tz.name().to_string(),
             selected_output_tz_obj: site_tz,
-            long_term_data: LongTermPlot::new(LatLon::new(lat, long), database_url.clone()),
-            night_tracks_data: LongTermTimeline::new(LatLon::new(lat, long), database_url.clone()),
+            night_tracks_data: NightTracksPanel::new(LatLon::new(lat, long), database_url.clone()),
             daily_solar_data: DailySolar::new(
                 Utc::now().date_naive(),
                 LatLon::new(lat, long),
@@ -124,8 +121,7 @@ impl AstroCalcApp {
         let prev = self.panel_view;
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.panel_view, 0, "Config");
-            ui.selectable_value(&mut self.panel_view, 1, "Long Term");
-            ui.selectable_value(&mut self.panel_view, 4, "Night Tracks");
+            ui.selectable_value(&mut self.panel_view, 1, "Night Tracks");
             ui.selectable_value(&mut self.panel_view, 2, "Daily");
             ui.selectable_value(&mut self.panel_view, 3, "ISS");
         });
@@ -135,11 +131,6 @@ impl AstroCalcApp {
             self.daily_solar_data.refresh_positions();
         }
         if self.panel_view == 1 && prev != 1 {
-            self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
-            self.long_term_data.view_windows = self.view_windows.clone();
-            self.long_term_data.refresh_from_db();
-        }
-        if self.panel_view == 4 && prev != 4 {
             self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
             self.night_tracks_data.view_windows = self.view_windows.clone();
             self.night_tracks_data.refresh_from_db();
@@ -177,22 +168,19 @@ impl AstroCalcApp {
         if changed {
             self.sync_site_timezone_from_map();
             self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
-            self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
             self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
             self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
             self.iss_data.view_windows = self.view_windows.clone();
             self.ephemeris_req_key = None;
             self.ephemeris_done_key = None;
-            self.long_term_req_key = None;
-            self.long_term_done_key = None;
-            self.long_term_dso_batch_key = None;
-            self.long_term_dso_done_key = None;
+            self.night_tracks_req_key = None;
+            self.night_tracks_done_key = None;
+            self.night_tracks_dso_batch_key = None;
+            self.night_tracks_dso_done_key = None;
             self.iss_req_key = None;
             self.iss_done_key = None;
             self.iss_data.request_predict = true;
             self.daily_solar_data.refresh_positions();
-            self.long_term_data.view_windows = self.view_windows.clone();
-            self.long_term_data.refresh_from_db();
             self.night_tracks_data.view_windows = self.view_windows.clone();
             self.night_tracks_data.refresh_from_db();
         }
@@ -215,8 +203,8 @@ impl AstroCalcApp {
         )
     }
 
-    fn long_term_prefetch_key(&self, start: NaiveDate) -> (NaiveDate, i64, i64) {
-        let snapped = self.long_term_data.lat_lon.snap(2);
+    fn night_tracks_prefetch_key(&self, start: NaiveDate) -> (NaiveDate, i64, i64) {
+        let snapped = self.night_tracks_data.lat_lon.snap(2);
         (
             start,
             (snapped.lat * 100.0).round() as i64,
@@ -224,49 +212,38 @@ impl AstroCalcApp {
         )
     }
 
-    fn merged_long_term_prefetch_start(&self) -> Option<NaiveDate> {
-        self.long_term_data
-            .prefetch_start
-            .or(self.night_tracks_data.prefetch_start)
-    }
-
-    fn ensure_long_term_prefetch(&mut self) {
-        let pending = self.long_term_bind.is_pending();
-        self.long_term_data.ephemeris_pending = pending;
+    fn ensure_night_tracks_prefetch(&mut self) {
+        let pending = self.night_tracks_bind.is_pending();
         self.night_tracks_data.ephemeris_pending = pending;
 
         if pending {
             return;
         }
 
-        if let Some(start) = self.merged_long_term_prefetch_start() {
-            let key = self.long_term_prefetch_key(start);
-            if self.long_term_req_key == Some(key) && self.long_term_done_key != Some(key) {
-                if let Some(res) = self.long_term_bind.read() {
+        if let Some(start) = self.night_tracks_data.prefetch_start {
+            let key = self.night_tracks_prefetch_key(start);
+            if self.night_tracks_req_key == Some(key) && self.night_tracks_done_key != Some(key) {
+                if let Some(res) = self.night_tracks_bind.read() {
                     if res.is_ok() {
-                        self.long_term_done_key = Some(key);
-                        self.long_term_data.reload_after_prefetch();
+                        self.night_tracks_done_key = Some(key);
                         self.night_tracks_data.reload_after_prefetch();
                     } else {
-                        self.long_term_data.prefetch_start = None;
                         self.night_tracks_data.prefetch_start = None;
                     }
                     return;
                 }
             }
 
-            if self.long_term_done_key == Some(key) {
-                self.long_term_data.prefetch_start = None;
+            if self.night_tracks_done_key == Some(key) {
                 self.night_tracks_data.prefetch_start = None;
                 return;
             }
 
-            self.long_term_req_key = Some(key);
-            let snapped = self.long_term_data.lat_lon.snap(2);
+            self.night_tracks_req_key = Some(key);
+            let snapped = self.night_tracks_data.lat_lon.snap(2);
             let db = self.database_url.clone();
-            self.long_term_data.ephemeris_pending = true;
             self.night_tracks_data.ephemeris_pending = true;
-            self.long_term_bind.refresh(async move {
+            self.night_tracks_bind.refresh(async move {
                 calculate_solar_system_positions(
                     start,
                     snapped.lat,
@@ -280,9 +257,8 @@ impl AstroCalcApp {
         }
     }
 
-    fn ensure_long_term_dso_backfill(&mut self) {
-        let pending = self.long_term_dso_bind.is_pending();
-        self.long_term_data.dso_backfill_pending = pending;
+    fn ensure_night_tracks_dso_backfill(&mut self) {
+        let pending = self.night_tracks_dso_bind.is_pending();
         self.night_tracks_data.dso_backfill_pending = pending;
 
         if pending {
@@ -290,45 +266,32 @@ impl AstroCalcApp {
         }
 
         // Consume completed batch.
-        if let Some(key) = self.long_term_dso_batch_key {
-            if self.long_term_dso_done_key != Some(key) {
-                if let Some(res) = self.long_term_dso_bind.read() {
+        if let Some(key) = self.night_tracks_dso_batch_key {
+            if self.night_tracks_dso_done_key != Some(key) {
+                if let Some(res) = self.night_tracks_dso_bind.read() {
                     if res.is_ok() {
-                        self.long_term_dso_done_key = Some(key);
-                        self.long_term_data.reload_after_dso_backfill();
+                        self.night_tracks_dso_done_key = Some(key);
                         self.night_tracks_data.reload_after_dso_backfill();
                     }
-                    self.long_term_dso_batch_key = None;
+                    self.night_tracks_dso_batch_key = None;
                 }
             }
         }
 
-        if self.long_term_data.dso_backfill_queue.is_empty()
-            && self.night_tracks_data.dso_backfill_queue.is_empty()
-        {
-            self.long_term_data.dso_backfill_pending = false;
+        if self.night_tracks_data.dso_backfill_queue.is_empty() {
             self.night_tracks_data.dso_backfill_pending = false;
             return;
         }
 
-        let (batch, ids) = if !self.long_term_data.dso_backfill_queue.is_empty() {
-            (
-                self.long_term_data
-                    .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize),
-                self.long_term_data.catalog_select.selected_dso_ids(),
-            )
-        } else {
-            (
-                self.night_tracks_data
-                    .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize),
-                self.night_tracks_data.catalog_select.selected_dso_ids(),
-            )
-        };
+        let batch = self
+            .night_tracks_data
+            .take_dso_backfill_batch(DAILY_PREFETCH_DAY_COUNT as usize);
         if batch.is_empty() {
             return;
         }
+        let ids = self.night_tracks_data.catalog_select.selected_dso_ids();
 
-        let snapped = self.long_term_data.lat_lon.snap(2);
+        let snapped = self.night_tracks_data.lat_lon.snap(2);
         let start = batch[0];
         let key = (
             start,
@@ -336,15 +299,14 @@ impl AstroCalcApp {
             (snapped.lat * 100.0).round() as i64,
             (snapped.lon * 100.0).round() as i64,
         );
-        self.long_term_dso_batch_key = Some(key);
-        self.long_term_dso_done_key = None;
+        self.night_tracks_dso_batch_key = Some(key);
+        self.night_tracks_dso_done_key = None;
 
         let db = self.database_url.clone();
         let lat = snapped.lat;
         let lon = snapped.lon;
-        self.long_term_data.dso_backfill_pending = true;
         self.night_tracks_data.dso_backfill_pending = true;
-        self.long_term_dso_bind.refresh(async move {
+        self.night_tracks_dso_bind.refresh(async move {
             ensure_dso_batch(&db, lat, lon, SAMPLE_FREQ_MINUTES, &ids, &batch);
             Ok(())
         });
@@ -366,8 +328,7 @@ impl AstroCalcApp {
                     self.ephemeris_done_key = Some(key);
                     self.daily_solar_data.reload_cached_only();
                     self.daily_solar_data.request_ephemeris_prefetch = false;
-                    if self.panel_view == 1 || self.panel_view == 4 {
-                        self.long_term_data.refresh_from_db();
+                    if self.panel_view == 1 {
                         self.night_tracks_data.refresh_from_db();
                     }
                 } else {
@@ -615,33 +576,14 @@ impl eframe::App for AstroCalcApp {
                     self.config_panel_view(ui);
                 }
                 if self.panel_view == 1 {
-                    self.long_term_data.lat_lon = LatLon::new(self.lat, self.long);
-                    self.long_term_data.local_tz = self.selected_output_tz_obj;
-                    self.long_term_data.view_windows = self.view_windows.clone();
-                    self.ensure_long_term_prefetch();
-                    self.ensure_long_term_dso_backfill();
-                    ui.add(&mut self.long_term_data);
-                    self.ensure_long_term_prefetch();
-                    self.ensure_long_term_dso_backfill();
-                    if let Some(date) = self.long_term_data.goto_daily_date.take() {
-                        self.panel_view = 2;
-                        self.daily_solar_data.date = date;
-                        self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
-                        self.daily_solar_data
-                            .set_local_tz(self.selected_output_tz_obj);
-                        self.daily_solar_data.view_windows = self.view_windows.clone();
-                        self.daily_solar_data.refresh_positions();
-                    }
-                }
-                if self.panel_view == 4 {
                     self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
                     self.night_tracks_data.local_tz = self.selected_output_tz_obj;
                     self.night_tracks_data.view_windows = self.view_windows.clone();
-                    self.ensure_long_term_prefetch();
-                    self.ensure_long_term_dso_backfill();
+                    self.ensure_night_tracks_prefetch();
+                    self.ensure_night_tracks_dso_backfill();
                     ui.add(&mut self.night_tracks_data);
-                    self.ensure_long_term_prefetch();
-                    self.ensure_long_term_dso_backfill();
+                    self.ensure_night_tracks_prefetch();
+                    self.ensure_night_tracks_dso_backfill();
                     if let Some(date) = self.night_tracks_data.goto_daily_date.take() {
                         self.panel_view = 2;
                         self.daily_solar_data.date = date;

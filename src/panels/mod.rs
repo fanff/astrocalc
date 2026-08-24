@@ -1,8 +1,7 @@
 pub mod config;
 pub mod dailysolar;
 pub mod iss;
-pub mod longterm_plot;
-pub mod longterm_timeline;
+pub mod night_tracks;
 
 #[derive(Clone, Copy, Debug)]
 pub struct LatLon {

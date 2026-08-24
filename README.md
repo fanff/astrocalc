@@ -10,7 +10,7 @@ Pick your site, define the parts of the sky you can actually see, then find when
 
 - **Set up your site** — place yourself on a map and draw visibility zones for your usable sky (trees, roofs, horizon limits)
 - **Explore a single night** — sky map and timeline for one evening; selecting a date caches that night plus ~10 days ahead in the background
-- **Scan the long term** — multi-night presence overview from cache (objects visible ≥20 minutes in your view), with the same catalog selection as Daily
+- **Scan multiple nights** — Night Tracks timeline from cache (twilight background, altitude-colored segments), with the same catalog selection as Daily
 - **Check observing conditions** — weather context (clouds, humidity, wind) for the selected location and night
 - **Plan ISS views** — dedicated ISS tab: ~60-day list of sunlit dusk/dawn passes and Sun/Moon disk transit/near-miss opportunities (fresh TLE from Celestrak)
 - **Work offline for setup** — Config map falls back to an embedded vector basemap (countries, French regions, key cities) when the network is unavailable
@@ -23,7 +23,7 @@ Pick your site, define the parts of the sky you can actually see, then find when
 
 ## Status
 
-Early and actively developed. Solar-system and deep-sky nightly planning, Daily visualization, Long Term presence overview, weather, and a dedicated ISS opportunities view are usable today. Hardware preview remains on the roadmap.
+Early and actively developed. Solar-system and deep-sky nightly planning, Daily visualization, Night Tracks multi-night timeline, weather, and a dedicated ISS opportunities view are usable today. Hardware preview remains on the roadmap.
 
 ## Download
 

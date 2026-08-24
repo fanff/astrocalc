@@ -24,13 +24,16 @@ struct TimelineRefreshKey {
     lat_sector: f64,
     lon_sector: f64,
     view_windows: Vec<ViewWindow>,
+    apply_view_filter: bool,
     selected_names: Vec<String>,
     dates: Vec<NaiveDate>,
 }
 
-pub struct LongTermTimeline {
+pub struct NightTracksPanel {
     pub catalog_select: CatalogSelection,
     pub view_windows: Vec<ViewWindow>,
+    /// When true, clip segments to configured visibility zones.
+    pub apply_view_filter: bool,
     pub lat_lon: LatLon,
     pub local_tz: Tz,
     database_url: String,
@@ -45,11 +48,12 @@ pub struct LongTermTimeline {
     refresh_cache_key: Option<TimelineRefreshKey>,
 }
 
-impl LongTermTimeline {
+impl NightTracksPanel {
     pub fn new(lat_lon: LatLon, database_url: String) -> Self {
         Self {
             catalog_select: CatalogSelection::default(),
             view_windows: Vec::new(),
+            apply_view_filter: true,
             lat_lon,
             local_tz: Tz::UTC,
             database_url,
@@ -109,6 +113,7 @@ impl LongTermTimeline {
             lat_sector: snapped.lat,
             lon_sector: snapped.lon,
             view_windows: self.view_windows.clone(),
+            apply_view_filter: self.apply_view_filter,
             selected_names: selected.clone(),
             dates: dates.clone(),
         };
@@ -149,6 +154,7 @@ impl LongTermTimeline {
                     &self.view_windows,
                     MIN_DURATION_MINUTES,
                     &selected,
+                    self.apply_view_filter,
                 )
             };
             rows.push(NightTimelineRow::new(
@@ -199,12 +205,20 @@ impl LongTermTimeline {
     }
 }
 
-impl egui::Widget for &mut LongTermTimeline {
+impl egui::Widget for &mut NightTracksPanel {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         let before = self.catalog_select.selected_object_names();
         ui.add(&mut self.catalog_select);
         let after = self.catalog_select.selected_object_names();
         if before != after {
+            self.refresh_from_db();
+        }
+
+        if ui
+            .checkbox(&mut self.apply_view_filter, "Limit to configured view")
+            .changed()
+        {
+            self.refresh_cache_key = None;
             self.refresh_from_db();
         }
 

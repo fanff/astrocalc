@@ -4,7 +4,7 @@ use crate::solarsystemcalc::{
     NightInfo, ObjectPositionSegments, darken_for_bar_fill, get_object_color,
 };
 use crate::timezone_util::{format_axis_local, format_axis_utc, format_utc_local_block};
-use chrono::{DateTime, Duration, Timelike};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use chrono_tz::Tz;
 use egui::{Align2, Color32, Response, RichText, Sense, Vec2b};
 use egui_plot::{AxisHints, Plot, PlotBounds, PlotPoint, Polygon, Text, VLine};
@@ -127,6 +127,9 @@ impl egui::Widget for &mut CalPlot {
             let Some(dt) = DateTime::from_timestamp_millis(value.x as i64) else {
                 return name.to_string();
             };
+            if name == "now" {
+                return format!("Now\n{}", format_utc_local_block(dt, output_timezone));
+            }
             format!("{}\n{}", name, format_utc_local_block(dt, output_timezone))
         };
 
@@ -248,6 +251,16 @@ impl egui::Widget for &mut CalPlot {
                     );
                 }
                 obj_index += 1.0;
+            }
+
+            let now = Utc::now();
+            if now >= ni.night_start_ms && now <= ni.night_end_ms {
+                plot_ui.vline(
+                    VLine::new("now", now.timestamp_millis() as f64)
+                        .color(Color32::from_rgb(255, 210, 90))
+                        .width(2.0)
+                        .style(egui_plot::LineStyle::Dashed { length: 6.0 }),
+                );
             }
         });
         ui.response()

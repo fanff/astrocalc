@@ -25,7 +25,7 @@ use sunrise_sunset_calculator::SunriseSunsetParameters;
 use crate::{
     models::{DateInfo, DateInfoInsert, ObjectPositionInsert, ObjectPositionStored},
     panels::LatLon,
-    panels::dailysolar::is_in_viewwindow,
+    panels::dailysolar::{is_above_horizon, is_in_viewwindow},
 };
 const AU_IN_KM: f64 = 149_597_870.7;
 
@@ -554,6 +554,7 @@ impl ObjectPositionSegments {
         view_windows: &Vec<crate::config::ViewWindow>,
         min_duration_minutes: i64,
         selected_object_names: &Vec<String>,
+        apply_view_windows: bool,
     ) -> ObjectPositionSegments {
         let selected: HashSet<&str> = selected_object_names.iter().map(String::as_str).collect();
         let mut filtered_segments_map: HashMap<String, Vec<ObjectSegment>> = HashMap::new();
@@ -565,11 +566,13 @@ impl ObjectPositionSegments {
             let mut filtered_segments = Vec::new();
 
             for segment in segments {
-                // filter positions in segment by view windows
                 let filtered_positions: Vec<ObjectPosition> = segment
                     .0
                     .iter()
-                    .filter(|pos| is_in_viewwindow(pos, view_windows))
+                    .filter(|pos| {
+                        is_above_horizon(pos)
+                            && (!apply_view_windows || is_in_viewwindow(pos, view_windows))
+                    })
                     .cloned()
                     .collect();
 
@@ -736,5 +739,85 @@ mod tests_sky_viz {
         assert!(nautical > dusk);
         assert!(astro > nautical);
         assert_eq!(sky_darkness_from_sun_alt(-25.0), 1.0);
+    }
+}
+
+#[cfg(test)]
+mod tests_filter_view {
+    use super::*;
+    use crate::config::ViewWindow;
+    use std::collections::HashMap;
+
+    fn sample_pos(name: &str, az: f64, alt: f64, minute: i64) -> ObjectPosition {
+        let t0 = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+        ObjectPosition {
+            name: name.to_string(),
+            utc_datetime: t0 + Duration::minutes(minute),
+            date: t0.date_naive(),
+            ra: 0.0,
+            dec: 0.0,
+            altitude: alt,
+            azimuth: az,
+            magnitude: 1.0,
+            distance: 1.0,
+            phase_ratio: 50.0,
+        }
+    }
+
+    fn mars_segment_with_two_samples() -> ObjectPositionSegments {
+        let mut segments = HashMap::new();
+        segments.insert(
+            "Mars".to_string(),
+            vec![ObjectSegment(vec![
+                sample_pos("Mars", 90.0, 30.0, 0),
+                sample_pos("Mars", 200.0, 30.0, 10),
+            ])],
+        );
+        ObjectPositionSegments { segments }
+    }
+
+    fn mars_segment_with_below_horizon() -> ObjectPositionSegments {
+        let mut segments = HashMap::new();
+        segments.insert(
+            "Mars".to_string(),
+            vec![ObjectSegment(vec![
+                sample_pos("Mars", 90.0, -5.0, 0),
+                sample_pos("Mars", 90.0, 20.0, 10),
+            ])],
+        );
+        ObjectPositionSegments { segments }
+    }
+
+    #[test]
+    fn filter_view_respects_apply_view_windows_flag() {
+        let view = vec![ViewWindow::new(60.0, 120.0, 10.0, 45.0)];
+        let selected = vec!["Mars".to_string()];
+        let input = mars_segment_with_two_samples();
+
+        let filtered = input.filter_view(&view, 0, &selected, true);
+        let in_view = &filtered.segments["Mars"][0].0;
+        assert_eq!(in_view.len(), 1);
+        assert!((in_view[0].azimuth - 90.0).abs() < f64::EPSILON);
+
+        let unfiltered = input.filter_view(&view, 0, &selected, false);
+        let all = &unfiltered.segments["Mars"][0].0;
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn filter_view_always_excludes_below_horizon() {
+        let view = vec![ViewWindow::new(60.0, 120.0, 10.0, 45.0)];
+        let selected = vec!["Mars".to_string()];
+        let input = mars_segment_with_below_horizon();
+
+        let with_view = input.filter_view(&view, 0, &selected, true);
+        let in_view = &with_view.segments["Mars"][0].0;
+        assert_eq!(in_view.len(), 1);
+        assert!(in_view[0].altitude >= 0.0);
+
+        let without_view = input.filter_view(&view, 0, &selected, false);
+        let above_horizon = &without_view.segments["Mars"][0].0;
+        assert_eq!(above_horizon.len(), 1);
+        assert!((above_horizon[0].altitude - 20.0).abs() < f64::EPSILON);
     }
 }

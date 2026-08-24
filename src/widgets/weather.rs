@@ -1,6 +1,6 @@
 use chrono_tz::Tz;
 use egui::{Color32, Response, RichText, Sense, Ui, UiBuilder, Vec2b};
-use egui_plot::{AxisHints, Legend, Line, Plot, PlotBounds, PlotPoints};
+use egui_plot::{AxisHints, Legend, Line, Plot, PlotBounds, PlotPoint, PlotPoints};
 
 use crate::solarsystemcalc::NightInfo;
 use crate::timezone_util::{format_axis_local, format_axis_utc};
@@ -77,7 +77,7 @@ impl egui::Widget for WeatherPanel<'_> {
             );
 
             // Cloud + humidity share one 0–100% Y axis; wind keeps its own scale below.
-            weather_pct_plot(ui, &cloud_pts, &humidity_pts, x_bounds);
+            weather_pct_plot(ui, &cloud_pts, &humidity_pts, x_bounds, local_tz);
             weather_wind_plot(ui, &wind_pts, x_bounds, local_tz, wind_y_range(&wind_vals));
         })
         .response
@@ -110,10 +110,58 @@ fn locked_weather_plot(id: &str, height: f32, width: f32) -> Plot<'static> {
         .allow_boxed_zoom(false)
         .allow_axis_zoom_drag(false)
         .sense(Sense::hover())
-        .show_x(false)
-        .show_y(false)
-        .auto_bounds(false)
+        .auto_bounds(Vec2b::new(false, false))
         .link_axis("weather_night_time", Vec2b::new(true, false))
+}
+
+fn nearest_value_at_x(series: &[[f64; 2]], x: f64) -> Option<f64> {
+    series
+        .iter()
+        .min_by(|a, b| {
+            (a[0] - x)
+                .abs()
+                .partial_cmp(&(b[0] - x).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|p| p[1])
+}
+
+fn pct_label_formatter<'a>(
+    local_tz: Tz,
+    cloud: &'a [[f64; 2]],
+    humidity: &'a [[f64; 2]],
+) -> impl Fn(&str, &PlotPoint) -> String + 'a {
+    move |name, value| {
+        let time = format_axis_local(value.x as i64, local_tz);
+        if !name.is_empty() {
+            return format!("{name}\n{time}\n{:.0}%", value.y.clamp(0.0, 100.0));
+        }
+        let mut lines = vec![time];
+        if let Some(v) = nearest_value_at_x(cloud, value.x) {
+            lines.push(format!("cloud: {:.0}%", v.clamp(0.0, 100.0)));
+        }
+        if let Some(v) = nearest_value_at_x(humidity, value.x) {
+            lines.push(format!("humidity: {:.0}%", v.clamp(0.0, 100.0)));
+        }
+        lines.join("\n")
+    }
+}
+
+fn wind_label_formatter<'a>(
+    local_tz: Tz,
+    wind: &'a [[f64; 2]],
+) -> impl Fn(&str, &PlotPoint) -> String + 'a {
+    move |name, value| {
+        let time = format_axis_local(value.x as i64, local_tz);
+        if !name.is_empty() {
+            return format!("{name}\n{time}\n{:.1} km/h", value.y);
+        }
+        if let Some(v) = nearest_value_at_x(wind, value.x) {
+            format!("{time}\nwind: {v:.1} km/h")
+        } else {
+            time
+        }
+    }
 }
 
 /// Reserve a fixed-width label column that cannot grow with text length.
@@ -137,7 +185,12 @@ fn weather_pct_plot(
     cloud: &[[f64; 2]],
     humidity: &[[f64; 2]],
     x_bounds: Option<(f64, f64)>,
+    local_tz: Tz,
 ) {
+    let y_pct_fmt = |mark: egui_plot::GridMark, _range: &std::ops::RangeInclusive<f64>| {
+        format!("{:.0}%", mark.value)
+    };
+
     ui.horizontal(|ui| {
         weather_gutter(ui, PCT_STRIP_HEIGHT, |ui| {
             ui.vertical(|ui| {
@@ -154,23 +207,29 @@ fn weather_pct_plot(
         });
 
         let plot = locked_weather_plot("weather_pct", PCT_STRIP_HEIGHT, ui.available_width())
-            .show_axes(false)
+            .show_axes(Vec2b::new(false, true))
+            .show_grid(Vec2b::new(false, true))
             .default_y_bounds(0.0, 100.0)
+            .include_y(0.0)
+            .include_y(100.0)
+            .label_formatter(pct_label_formatter(local_tz, cloud, humidity))
+            .custom_y_axes(vec![AxisHints::new_y().formatter(y_pct_fmt)])
             .legend(Legend::default().position(egui_plot::Corner::RightTop));
 
         let cloud_pts = PlotPoints::from_iter(cloud.iter().copied());
         let humidity_pts = PlotPoints::from_iter(humidity.iter().copied());
         plot.show(ui, |plot_ui| {
+            plot_ui.set_auto_bounds(Vec2b::new(false, false));
             set_weather_bounds(plot_ui, x_bounds, 0.0, 100.0);
             plot_ui.line(
                 Line::new("cloud %", cloud_pts)
                     .color(Color32::LIGHT_BLUE)
-                    .width(1.5),
+                    .width(2.0),
             );
             plot_ui.line(
                 Line::new("humidity %", humidity_pts)
                     .color(Color32::LIGHT_GREEN)
-                    .width(1.5),
+                    .width(2.0),
             );
         });
     });
@@ -199,6 +258,7 @@ fn weather_wind_plot(
         let plot = locked_weather_plot("weather_wind", WIND_STRIP_HEIGHT, ui.available_width())
             .show_axes(Vec2b::new(true, false))
             .default_y_bounds(y_min, y_max)
+            .label_formatter(wind_label_formatter(local_tz, wind))
             .custom_x_axes(vec![
                 AxisHints::new_x().formatter(utc_fmt),
                 AxisHints::new_x().formatter(local_fmt),
@@ -206,11 +266,12 @@ fn weather_wind_plot(
 
         let points = PlotPoints::from_iter(wind.iter().copied());
         plot.show(ui, |plot_ui| {
+            plot_ui.set_auto_bounds(Vec2b::new(false, false));
             set_weather_bounds(plot_ui, x_bounds, y_min, y_max);
             plot_ui.line(
                 Line::new("wind km/h", points)
                     .color(Color32::LIGHT_RED)
-                    .width(1.5),
+                    .width(2.0),
             );
         });
     });
@@ -222,11 +283,8 @@ fn set_weather_bounds(
     y_min: f64,
     y_max: f64,
 ) {
-    if let Some((xmin, xmax)) = x_bounds {
-        plot_ui.set_plot_bounds(PlotBounds::from_min_max([xmin, y_min], [xmax, y_max]));
-    } else {
-        plot_ui.set_plot_bounds_y(y_min..=y_max);
-    }
+    let (xmin, xmax) = x_bounds.unwrap_or((0.0, 1.0));
+    plot_ui.set_plot_bounds(PlotBounds::from_min_max([xmin, y_min], [xmax, y_max]));
 }
 
 fn series_x_bounds<'a>(points: impl Iterator<Item = &'a [f64; 2]>) -> Option<(f64, f64)> {

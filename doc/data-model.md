@@ -97,7 +97,7 @@ Unique index: `(date, lat_sector, lon_sector, kind)` — one blob per family per
 
 Lookup pattern: snap lat/lon → query by date + sector + kind → decode blob → filter in domain/UI.
 
-**DSO merge cache:** `ensure_dso_positions` loads the `kind='dso'` blob, computes only **missing** selected display ids, merges, and rewrites the blob. Selection filters what Daily/Long Term plot; unselected tracks may remain in the blob for reuse. Changing sampling frequency or night definition requires invalidating DSO (and solar) rows for affected nights.
+**DSO merge cache:** `ensure_dso_positions` loads the `kind='dso'` blob, computes only **missing** selected display ids, merges, and rewrites the blob. Selection filters what Daily/Night Tracks plot; unselected tracks may remain in the blob for reuse. Changing sampling frequency or night definition requires invalidating DSO (and solar) rows for affected nights.
 
 Solar-system writes use `kind='solar'` only (Daily background prefetch: selected day + 10 nights).
 

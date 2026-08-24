@@ -13,12 +13,11 @@ Ownership map for the single binary crate. When adding code, put it in the modul
 | Module | Owns | Do not |
 |--------|------|--------|
 | [`src/gui.rs`](../src/gui.rs) | `AstroCalcApp` shell, panel routing, shared session state (lat/lon, view windows, binds) | Deep ephemeris math; keep growing god-object fields in check |
-| [`src/panels/`](../src/panels/) | Screen-level UI: `LatLon`, Config, Daily, Long Term | Reusable plot primitives (those go in widgets) |
+| [`src/panels/`](../src/panels/) | Screen-level UI: `LatLon`, Config, Daily, Night Tracks | Reusable plot primitives (those go in widgets) |
 | [`src/panels/config.rs`](../src/panels/config.rs) | Config layout: location map, visibility zones, Save → SQLite | Schema definitions; GeoJSON parsing |
-| [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load cached day, request background prefetch (day+10), object flags, weather panel, compose sky + calendar plots | Weather HTTP; ISS; raw Diesel schema details if a repository helper exists |
+| [`src/panels/dailysolar.rs`](../src/panels/dailysolar.rs) | Daily night exploration: load cached day, request background prefetch (day+10), object flags, optional view-zone filter toggle, weather panel, compose sky + calendar plots | Weather HTTP; ISS; raw Diesel schema details if a repository helper exists |
 | [`src/panels/iss.rs`](../src/panels/iss.rs) | ISS opportunities view: cache-first `reload_cached_only` from `iss_events`, then Bind predict on miss; ~60-day list of sunlit passes + Sun/Moon disk events | TLE HTTP / SGP4 (lives in `satellites`) |
-| [`src/panels/longterm_plot.rs`](../src/panels/longterm_plot.rs) | Multi-night presence overview from DB (≥20 min in view; catalog selection; zoomable) | Duplicate daily filtering logic — share domain filters |
-| [`src/panels/longterm_timeline.rs`](../src/panels/longterm_timeline.rs) | Multi-night night-bar timeline (twilight background, altitude-colored segments; catalog selection; zoomable) | Weather overlay; duplicate cache loaders without sharing prefetch |
+| [`src/panels/night_tracks.rs`](../src/panels/night_tracks.rs) | Multi-night night-bar timeline (twilight background, altitude-colored segments; catalog selection; optional view-zone filter toggle; zoomable) | Weather overlay; duplicate cache loaders without sharing prefetch |
 | [`src/widgets/night_timeline_plot.rs`](../src/widgets/night_timeline_plot.rs) | Reusable multi-night timeline plot (clear-sky twilight strips + altitude segments) | DB/cache loading (panel owns that) |
 | [`src/widgets/`](../src/widgets/) | Reusable controls/plots: sky map, polar helpers, view-window zone editor, location map, calendar plot, weather panel, ISS opportunity helpers, catalog selection | Opening DB connections; owning app-wide config |
 | [`src/widgets/location_map.rs`](../src/widgets/location_map.rs) | OSM `HttpTiles` + offline vector basemap, click marker, online probe / mode | Config Save; view-window editing |

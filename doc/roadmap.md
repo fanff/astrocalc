@@ -21,7 +21,7 @@ Complete the DSO path from catalog to sky views.
 
 - [x] Parse RA/Dec strings and alt-az conversion for the observer
 - [ ] Apply magnitude filtering from catalog `v_mag` as a planning constraint (catalog UI mag limits exist)
-- [x] Wire into Daily and Long Term with object selection
+- [x] Wire into Daily and Night Tracks with object selection
 - [x] SQLite/cache strategy: `objectposition.kind = 'dso'` blobs with selected-id merge via `ensure_dso_positions`
 
 **Depends on:** [src/deepsky/](../src/deepsky/).
@@ -32,12 +32,12 @@ Close gaps in the solar-system family.
 
 - Complete Sun handling alongside planets and Moon
 - Verify magnitudes, phase (Moon), and night/day edge cases
-- [x] **Long Term** panel: presence overview from DB (date × object dots, ≥20 min in view; no weather)
+- [x] ~~**Long Term** panel~~ removed — presence overview superseded by Night Tracks
 - [x] **Night Tracks** panel: multi-night timeline (night hours × dates; twilight clear-sky background; altitude-encoded object segments; no weather)
 - [x] Solar System calc panel removed — Daily prefetches selected night + 10 days in background
-- Keep Daily and Long Term on the same position types and filters
+- Keep Daily and Night Tracks on the same position types and filters
 
-**Depends on:** [src/solarsystemcalc.rs](../src/solarsystemcalc.rs), [src/panels/longterm_plot.rs](../src/panels/longterm_plot.rs).
+**Depends on:** [src/solarsystemcalc.rs](../src/solarsystemcalc.rs), [src/panels/night_tracks.rs](../src/panels/night_tracks.rs).
 
 ### 4. FOV, limit magnitude, visibility filtering
 

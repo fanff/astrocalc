@@ -32,6 +32,7 @@ struct SegmentCacheKey {
     lat_sector: f64,
     lon_sector: f64,
     view_windows: Vec<ViewWindow>,
+    apply_view_filter: bool,
     selected_names: Vec<String>,
     /// Fingerprint of loaded positions (len + first/last sample times).
     pos_fp: Option<(usize, i64, i64)>,
@@ -44,6 +45,8 @@ pub struct DailySolar {
     pub sky_map: SkyMapPlot,
     pub cal_plot: CalPlot,
     pub view_windows: Vec<ViewWindow>,
+    /// When true, clip segments to configured visibility zones.
+    pub apply_view_filter: bool,
     pub positions: Option<Vec<ObjectPosition>>,
     pub dateinfo: Option<NightInfo>,
     pub database_connection: String,
@@ -85,6 +88,7 @@ impl DailySolar {
             sky_map: SkyMapPlot::new(),
             cal_plot: CalPlot::new(),
             view_windows,
+            apply_view_filter: true,
             positions: None,
             dateinfo: None,
             database_connection: database_connection_str,
@@ -198,6 +202,7 @@ impl DailySolar {
             lat_sector: snapped.lat,
             lon_sector: snapped.lon,
             view_windows: self.view_windows.clone(),
+            apply_view_filter: self.apply_view_filter,
             selected_names: selected_names.clone(),
             pos_fp: Self::positions_fingerprint(self.positions.as_ref()),
         };
@@ -212,6 +217,7 @@ impl DailySolar {
                         &self.view_windows,
                         SEGMENT_MIN_DURATION_MINUTES,
                         &selected_names,
+                        self.apply_view_filter,
                     );
             let mut types = CatalogSelection::planet_type_map();
             types.extend(self.dso_types.clone());
@@ -285,6 +291,13 @@ impl egui::Widget for &mut DailySolar {
             self.refresh_positions();
         }
 
+        if ui
+            .checkbox(&mut self.apply_view_filter, "Limit to configured view")
+            .changed()
+        {
+            self.segment_cache_key = None;
+        }
+
         let segments_rebuilt = self.ensure_segment_cache();
         self.cal_plot.dateinfo = self.dateinfo.clone();
         if segments_rebuilt {
@@ -353,6 +366,10 @@ impl egui::Widget for &mut DailySolar {
 
         ui.response()
     }
+}
+
+pub fn is_above_horizon(pos: &ObjectPosition) -> bool {
+    pos.altitude >= 0.0
 }
 
 pub fn is_in_viewwindow(pos: &ObjectPosition, view_windows: &Vec<ViewWindow>) -> bool {
