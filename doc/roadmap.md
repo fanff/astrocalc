@@ -44,7 +44,7 @@ Not user-facing features, but required so the priority list does not rot the tre
 - [x] Fix window title (`"egui Demo"` → AstroCalc) and app icon
 - Migration/schema hygiene (empty third migration; naming leftovers)
 - [x] Cull unused deps (`clap`, `suncalc`, `polars`)
-- [x] CI: `fmt` + `clippy -D warnings` + `test` on PRs (`.github/workflows/ci.yml`)
+- [x] CI: strict `fmt` + advisory `clippy` + `test` on PRs (`.github/workflows/ci.yml`); restore `-D warnings` after clearing the existing warning backlog
 - Keep [modules.md](modules.md) and this roadmap updated when a major feature lands
 - [x] Config panel UX: compact layout, sticky Save, OSM location map with offline no-tiles fallback
 - [x] Named configuration profiles with quick switching and OSM azimuth-zone overlays
