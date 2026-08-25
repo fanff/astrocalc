@@ -32,7 +32,7 @@ Close gaps in the solar-system family.
 
 Settings-driven constraints applied uniformly across object kinds.
 
-- Persist FOV and limit magnitude in `app_settings` (not panel-only state)
+- Persist FOV and limit magnitude in `config_profiles` (not panel-only state)
 - Filter positions/segments before plotting
 - Same pipeline for solar-system and deep-sky (and later ISS)
 
@@ -47,6 +47,7 @@ Not user-facing features, but required so the priority list does not rot the tre
 - [x] CI: `fmt` + `clippy -D warnings` + `test` on PRs (`.github/workflows/ci.yml`)
 - Keep [modules.md](modules.md) and this roadmap updated when a major feature lands
 - [x] Config panel UX: compact layout, sticky Save, OSM location map with offline no-tiles fallback
+- [x] Named configuration profiles with quick switching and OSM azimuth-zone overlays
 
 ## Out of scope for now
 

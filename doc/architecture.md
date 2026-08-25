@@ -84,7 +84,7 @@ Presentation features (photo overlay, expected frame preview) consume the same d
 
 ## Configuration surface
 
-User-facing durable settings (observer lat/lon, view windows, Bortle class) live in SQLite (`app_settings`). Connection path and secrets stay in env (`.env` → `DATABASE_URL`).
+User-facing durable settings (observer lat/lon, view windows, Bortle class) live in named SQLite `config_profiles`; singleton `app_state` records the active profile. Connection path and secrets stay in env (`.env` → `DATABASE_URL`).
 
 Extend settings for FOV, limit magnitude, hardware profile, overlay image paths — **do not hardcode** these in panels. Panel state may hold ephemeral UI values; persistence goes through the settings row or other DB tables.
 
@@ -92,7 +92,7 @@ Extend settings for FOV, limit magnitude, hardware profile, overlay image paths 
 
 | Store | Role |
 |-------|------|
-| SQLite + Diesel | App settings (`app_settings`); night spans + position blobs; query by date × sector |
+| SQLite + Diesel | Named configuration profiles + active profile; night spans + position blobs; query by date × sector |
 | YAML weather files | Forecast cache under `my_weather_app/` |
 | Embedded CSV | Deep-sky catalog (`include_str!`) |
 

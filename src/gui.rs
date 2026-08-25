@@ -1,9 +1,9 @@
 use crate::{
     config::{AppSettings, ViewWindow},
     deepsky::ensure_dso_batch,
-    models::{IssEventInsert, IssEventRow},
+    models::{ConfigProfile, IssEventInsert, IssEventRow},
     panels::LatLon,
-    panels::config::ConfigPanel,
+    panels::config::{ConfigAction, ConfigPanel, ConfigPanelState},
     panels::dailysolar::{DAILY_PREFETCH_DAY_COUNT, DailySolar, SAMPLE_FREQ_MINUTES},
     panels::iss::IssPanelState,
     panels::night_tracks::NightTracksPanel,
@@ -27,6 +27,10 @@ pub struct AstroCalcApp {
     pub view_windows: Vec<ViewWindow>,
     pub bortle_class: u8,
     pub zone_editor: ViewWindowEditorState,
+    pub config_panel_state: ConfigPanelState,
+    pub config_profiles: Vec<ConfigProfile>,
+    pub active_profile_id: i32,
+    pub saved_settings: AppSettings,
 
     pub ephemeris_bind: Bind<(), String>,
     /// Key for the in-flight or last-started Daily ephemeris job.
@@ -62,11 +66,12 @@ pub struct AstroCalcApp {
 impl AstroCalcApp {
     pub fn new(
         egui_ctx: Context,
-        settings: AppSettings,
+        active_profile: ConfigProfile,
         database_url: String,
         weather_cache: WeatherCache,
         tle_cache: TleCache,
     ) -> Self {
+        let settings = active_profile.settings.clone();
         let lat = settings.lat;
         let long = settings.lon;
         let site_tz = site_tz_from_lat_lon(lat, long);
@@ -78,6 +83,10 @@ impl AstroCalcApp {
             view_windows: settings.view_windows.clone(),
             bortle_class: settings.bortle_class,
             zone_editor: ViewWindowEditorState::default(),
+            config_panel_state: ConfigPanelState::default(),
+            config_profiles: vec![active_profile.clone()],
+            active_profile_id: active_profile.id,
+            saved_settings: settings.clone(),
             ephemeris_bind: Bind::new(false),
             ephemeris_req_key: None,
             ephemeris_done_key: None,
@@ -112,6 +121,11 @@ impl AstroCalcApp {
         };
         app.daily_solar_data.set_local_tz(site_tz);
         app.iss_data.set_local_tz(site_tz);
+        if let Ok(mut conn) = diesel::SqliteConnection::establish(&app.database_url) {
+            if let Ok(profiles) = ConfigProfile::list(&mut conn) {
+                app.config_profiles = profiles;
+            }
+        }
         app
     }
 }
@@ -153,37 +167,123 @@ impl AstroCalcApp {
     }
 
     fn config_panel_view(&mut self, ui: &mut Ui) {
-        let changed = ConfigPanel {
+        let dirty = self.current_settings() != self.saved_settings;
+        let output = ConfigPanel {
             lat: &mut self.lat,
             long: &mut self.long,
             timezone_name: self.selected_output_tz_obj.name(),
-            database_url: self.database_url.as_str(),
             view_windows: &mut self.view_windows,
             bortle_class: &mut self.bortle_class,
             zone_editor: &mut self.zone_editor,
             location_map: &mut self.location_map,
+            profiles: &self.config_profiles,
+            active_profile_id: self.active_profile_id,
+            dirty,
+            state: &mut self.config_panel_state,
         }
         .show(ui);
         self.iss_data.bortle_class = self.bortle_class;
-        if changed {
-            self.sync_site_timezone_from_map();
-            self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
-            self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
-            self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
-            self.iss_data.view_windows = self.view_windows.clone();
-            self.ephemeris_req_key = None;
-            self.ephemeris_done_key = None;
-            self.night_tracks_req_key = None;
-            self.night_tracks_done_key = None;
-            self.night_tracks_dso_batch_key = None;
-            self.night_tracks_dso_done_key = None;
-            self.iss_req_key = None;
-            self.iss_done_key = None;
-            self.iss_data.request_predict = true;
-            self.daily_solar_data.refresh_positions();
-            self.night_tracks_data.view_windows = self.view_windows.clone();
-            self.night_tracks_data.refresh_from_db();
+        if output.settings_changed {
+            self.handle_configuration_changed();
         }
+        if let Some(action) = output.action {
+            self.handle_config_action(action);
+        }
+    }
+
+    fn current_settings(&self) -> AppSettings {
+        AppSettings {
+            lat: self.lat,
+            lon: self.long,
+            view_windows: self.view_windows.clone(),
+            bortle_class: self.bortle_class,
+        }
+    }
+
+    fn handle_config_action(&mut self, action: ConfigAction) {
+        let settings = self.current_settings();
+        let result = (|| -> Result<Option<ConfigProfile>, String> {
+            let mut conn = diesel::SqliteConnection::establish(&self.database_url)
+                .map_err(|e| format!("Open database: {e}"))?;
+            match action {
+                ConfigAction::Save => {
+                    ConfigProfile::update(&mut conn, self.active_profile_id, &settings)?;
+                    self.saved_settings = settings;
+                }
+                ConfigAction::SaveAndSwitch(target) => {
+                    ConfigProfile::update(&mut conn, self.active_profile_id, &settings)?;
+                    ConfigProfile::set_active(&mut conn, target)?;
+                    return ConfigProfile::load(&mut conn, target).map(Some);
+                }
+                ConfigAction::SaveAs(name) => {
+                    let profile = ConfigProfile::create(&mut conn, &name, &settings)?;
+                    ConfigProfile::set_active(&mut conn, profile.id)?;
+                    return Ok(Some(profile));
+                }
+                ConfigAction::Rename(name) => {
+                    ConfigProfile::rename(&mut conn, self.active_profile_id, &name)?;
+                }
+                ConfigAction::Delete => {
+                    return ConfigProfile::delete(&mut conn, self.active_profile_id).map(Some);
+                }
+                ConfigAction::Switch(target) => {
+                    ConfigProfile::set_active(&mut conn, target)?;
+                    return ConfigProfile::load(&mut conn, target).map(Some);
+                }
+            }
+            Ok(None)
+        })();
+
+        match result {
+            Ok(profile) => {
+                if let Some(profile) = profile {
+                    self.apply_profile(profile);
+                }
+                if let Ok(mut conn) = diesel::SqliteConnection::establish(&self.database_url) {
+                    if let Ok(profiles) = ConfigProfile::list(&mut conn) {
+                        self.config_profiles = profiles;
+                    }
+                }
+                self.config_panel_state.status = Some(("Configuration saved".into(), true));
+            }
+            Err(error) => {
+                self.config_panel_state.status = Some((error, false));
+            }
+        }
+    }
+
+    fn apply_profile(&mut self, profile: ConfigProfile) {
+        self.active_profile_id = profile.id;
+        self.saved_settings = profile.settings.clone();
+        self.lat = profile.settings.lat;
+        self.long = profile.settings.lon;
+        self.view_windows = profile.settings.view_windows;
+        self.bortle_class = profile.settings.bortle_class;
+        self.zone_editor.selected = (!self.view_windows.is_empty()).then_some(0);
+        self.zone_editor.drag_corner = None;
+        self.location_map.center_on(self.long, self.lat);
+        self.handle_configuration_changed();
+    }
+
+    fn handle_configuration_changed(&mut self) {
+        self.sync_site_timezone_from_map();
+        self.daily_solar_data.lat_lon = LatLon::new(self.lat, self.long);
+        self.night_tracks_data.lat_lon = LatLon::new(self.lat, self.long);
+        self.iss_data.lat_lon = LatLon::new(self.lat, self.long);
+        self.iss_data.view_windows = self.view_windows.clone();
+        self.iss_data.bortle_class = self.bortle_class;
+        self.ephemeris_req_key = None;
+        self.ephemeris_done_key = None;
+        self.night_tracks_req_key = None;
+        self.night_tracks_done_key = None;
+        self.night_tracks_dso_batch_key = None;
+        self.night_tracks_dso_done_key = None;
+        self.iss_req_key = None;
+        self.iss_done_key = None;
+        self.iss_data.request_predict = true;
+        self.daily_solar_data.refresh_positions();
+        self.night_tracks_data.view_windows = self.view_windows.clone();
+        self.night_tracks_data.refresh_from_db();
     }
 
     fn sync_site_timezone_from_map(&mut self) {

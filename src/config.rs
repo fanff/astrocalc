@@ -1,5 +1,5 @@
 //! Domain settings: observer location and visibility zones.
-//! Persistence lives in SQLite (`app_settings`); this module owns types and validation.
+//! Persistence lives in named SQLite configuration profiles; this module owns types and validation.
 
 use core::fmt;
 
@@ -117,7 +117,7 @@ impl fmt::Display for ViewWindow {
     }
 }
 
-/// Durable observer + view settings (persisted in SQLite `app_settings`).
+/// Durable observer + view settings stored inside a named configuration profile.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AppSettings {
     pub lat: f64,

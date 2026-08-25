@@ -2,9 +2,9 @@
 
 Sources of truth for configuration, cached ephemeris, weather, and catalogs.
 
-## Application settings (`AppSettings`)
+## Named configuration profiles (`AppSettings`)
 
-Persisted in SQLite table `app_settings` (singleton row `id = 1`). Domain type in [src/config.rs](../src/config.rs); load/seed/upsert in [src/models.rs](../src/models.rs).
+Each named profile is persisted in SQLite table `config_profiles`; singleton table `app_state` points to the active profile. The settings payload remains `AppSettings` in [src/config.rs](../src/config.rs), with profile CRUD and active selection in [src/models.rs](../src/models.rs).
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -17,7 +17,7 @@ Connection string is **not** stored here — use `DATABASE_URL` (see Environment
 
 ### First-run defaults
 
-When `app_settings` has no row, the app seeds:
+When `config_profiles` has no rows, the app seeds a profile named `Default`:
 
 | Setting | Value |
 |---------|--------|
@@ -34,9 +34,9 @@ When `app_settings` has no row, the app seeds:
 
 `contains(az, alt)` is the geometric membership test used when filtering tracks (wrap-aware).
 
-Edited visually in Config via the polar sky circle ([`src/widgets/view_window_editor.rs`](../src/widgets/view_window_editor.rs)): same N-up projection as Daily (`r = 90 − alt`). Drag yellow corner handles to reshape a zone; **Add zone** creates a default sector.
+Edited visually in Config via the polar sky circle ([`src/widgets/view_window_editor.rs`](../src/widgets/view_window_editor.rs)): same N-up projection as Daily (`r = 90 − alt`). Drag yellow corner handles to reshape a zone; **Add zone** creates a default sector. The location map also draws each zone's azimuth wedge and boundary angles around the observer marker; altitude is intentionally omitted from this geographic overlay.
 
-Observer lat/lon is set from the Config location map ([`src/widgets/location_map.rs`](../src/widgets/location_map.rs)): OpenStreetMap tiles when online; offline mode shows a blank map but still accepts click-to-set coordinates. Layout lives in [`src/panels/config.rs`](../src/panels/config.rs); **Save** upserts `app_settings`.
+Observer lat/lon is set from the Config location map ([`src/widgets/location_map.rs`](../src/widgets/location_map.rs)): OpenStreetMap tiles when online; offline mode shows a blank map but still accepts click-to-set coordinates. Layout lives in [`src/panels/config.rs`](../src/panels/config.rs). **Save** updates the active profile; **Save as**, **Rename**, and **Delete** manage named profiles. Switching is immediate unless there are unsaved edits, in which case the user chooses save, discard, or cancel.
 
 ### Environment
 
@@ -56,16 +56,26 @@ Not in schema yet; add here when implementing roadmap items 4 and 6:
 
 Schema in [src/schema.rs](../src/schema.rs); row types in [src/models.rs](../src/models.rs). Migrations under `migrations/` (embedded and applied at startup).
 
-### `app_settings`
+### `config_profiles`
 
-Singleton observer + view configuration.
+Named observer + view configurations. Names are unique case-insensitively.
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `id` | integer PK | Generated profile identifier |
+| `name` | text | User-facing profile name |
+| `lat` / `lon` | double | Observer coordinates |
+| `view_windows_json` | text | JSON array of `ViewWindow` |
+| `bortle_class` | integer | Bortle class `1`…`9` (default `5`) |
+
+### `app_state`
+
+Singleton application state.
 
 | Column | Type | Meaning |
 |--------|------|---------|
 | `id` | integer PK | Always `1` (`CHECK (id = 1)`) |
-| `lat` / `lon` | double | Observer coordinates |
-| `view_windows_json` | text | JSON array of `ViewWindow` |
-| `bortle_class` | integer | Bortle class `1`…`9` (default `5`) |
+| `active_profile_id` | integer FK | Currently selected `config_profiles.id` |
 
 ### `dateinfo`
 

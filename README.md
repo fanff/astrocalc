@@ -8,7 +8,7 @@ Pick your site, define the parts of the sky you can actually see, then find when
 
 ## What you can do
 
-- **Set up your site** — place yourself on a map and draw visibility zones for your usable sky (trees, roofs, horizon limits)
+- **Set up your sites** — place yourself on a map, draw azimuth visibility zones, and save named configurations for quick switching
 - **Explore a single night** — sky map and timeline for one evening; selecting a date caches that night plus ~10 days ahead in the background
 - **Scan multiple nights** — Night Tracks timeline from cache (twilight background, altitude-colored segments), with the same catalog selection as Daily
 - **Check observing conditions** — weather context (clouds, humidity, wind) for the selected location and night
@@ -36,7 +36,7 @@ Requires a Rust toolchain.
 cargo run
 ```
 
-On first run, settings are seeded for Paris center with a near-full north-facing view window. Config **Save** stores location and visibility zones in SQLite (`app_settings`).
+On first run, a `Default` configuration is seeded for Paris center with a near-full north-facing view window. Config shows each zone's azimuth wedge on the location map and can save, name, and quickly switch between multiple configurations stored in SQLite.
 
 Copy `.env.example` to `.env` if you want a local database URL override (`DATABASE_URL`). Migrations under `migrations/` run automatically at startup.
 
