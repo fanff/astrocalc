@@ -121,10 +121,10 @@ impl AstroCalcApp {
         };
         app.daily_solar_data.set_local_tz(site_tz);
         app.iss_data.set_local_tz(site_tz);
-        if let Ok(mut conn) = diesel::SqliteConnection::establish(&app.database_url) {
-            if let Ok(profiles) = ConfigProfile::list(&mut conn) {
-                app.config_profiles = profiles;
-            }
+        if let Ok(mut conn) = diesel::SqliteConnection::establish(&app.database_url)
+            && let Ok(profiles) = ConfigProfile::list(&mut conn)
+        {
+            app.config_profiles = profiles;
         }
         app
     }
@@ -202,6 +202,13 @@ impl AstroCalcApp {
 
     fn handle_config_action(&mut self, action: ConfigAction) {
         let settings = self.current_settings();
+        let success_message = match &action {
+            ConfigAction::Save => "Configuration saved",
+            ConfigAction::SaveAndSwitch(_) | ConfigAction::Switch(_) => "Configuration switched",
+            ConfigAction::SaveAs(_) => "Configuration created",
+            ConfigAction::Rename(_) => "Configuration renamed",
+            ConfigAction::Delete => "Configuration deleted",
+        };
         let result = (|| -> Result<Option<ConfigProfile>, String> {
             let mut conn = diesel::SqliteConnection::establish(&self.database_url)
                 .map_err(|e| format!("Open database: {e}"))?;
@@ -239,12 +246,12 @@ impl AstroCalcApp {
                 if let Some(profile) = profile {
                     self.apply_profile(profile);
                 }
-                if let Ok(mut conn) = diesel::SqliteConnection::establish(&self.database_url) {
-                    if let Ok(profiles) = ConfigProfile::list(&mut conn) {
-                        self.config_profiles = profiles;
-                    }
+                if let Ok(mut conn) = diesel::SqliteConnection::establish(&self.database_url)
+                    && let Ok(profiles) = ConfigProfile::list(&mut conn)
+                {
+                    self.config_profiles = profiles;
                 }
-                self.config_panel_state.status = Some(("Configuration saved".into(), true));
+                self.config_panel_state.status = Some((success_message.into(), true));
             }
             Err(error) => {
                 self.config_panel_state.status = Some((error, false));

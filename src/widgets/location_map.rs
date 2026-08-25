@@ -107,7 +107,7 @@ impl Plugin for &mut LocationClickPlugin {
                     ));
                 }
 
-                let stroke = Stroke::new(if selected { 2.5 } else { 1.5 }, color);
+                let stroke = Stroke::new(if selected { 2.5_f32 } else { 1.5_f32 }, color);
                 for azimuth in [window.min_az_deg, window.max_az_deg] {
                     let endpoint = screen + azimuth_vector(azimuth, radius);
                     painter.line_segment([screen, endpoint], stroke);

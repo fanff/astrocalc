@@ -420,10 +420,10 @@ impl ConfigProfile {
             .first::<AppStateRow>(conn)
             .optional()
             .map_err(|e| format!("load active profile: {e}"))?;
-        if let Some(state) = state {
-            if let Ok(profile) = Self::load(conn, state.active_profile_id) {
-                return Ok(profile);
-            }
+        if let Some(state) = state
+            && let Ok(profile) = Self::load(conn, state.active_profile_id)
+        {
+            return Ok(profile);
         }
         Self::set_active(conn, fallback.id)?;
         Ok(fallback)
@@ -607,6 +607,38 @@ mod config_profile_tests {
         ConfigProfile::create(&mut conn, "Home", &settings).unwrap();
         assert!(ConfigProfile::create(&mut conn, "home", &settings).is_err());
         assert!(ConfigProfile::create(&mut conn, "  ", &settings).is_err());
+    }
+
+    #[test]
+    fn migration_preserves_legacy_settings_as_default_profile() {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.batch_execute(
+            "CREATE TABLE app_settings (
+                id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+                lat DOUBLE NOT NULL,
+                lon DOUBLE NOT NULL,
+                view_windows_json TEXT NOT NULL,
+                bortle_class INTEGER NOT NULL DEFAULT 5
+             );
+             INSERT INTO app_settings
+                (id, lat, lon, view_windows_json, bortle_class)
+             VALUES
+                (1, 51.5, -0.12,
+                 '[{\"min_az_deg\":350.0,\"max_az_deg\":10.0,\"min_alt_deg\":5.0,\"max_alt_deg\":70.0}]',
+                 4);",
+        )
+        .unwrap();
+        conn.batch_execute(include_str!(
+            "../migrations/2026-08-25-073600-0000_config_profiles/up.sql"
+        ))
+        .unwrap();
+
+        let profile = ConfigProfile::load_or_seed_active(&mut conn).unwrap();
+        assert_eq!(profile.name, "Default");
+        assert!((profile.settings.lat - 51.5).abs() < 1e-9);
+        assert!((profile.settings.lon + 0.12).abs() < 1e-9);
+        assert_eq!(profile.settings.bortle_class, 4);
+        assert!(profile.settings.view_windows[0].wraps_north());
     }
 }
 
