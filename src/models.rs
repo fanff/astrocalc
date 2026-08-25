@@ -291,118 +291,354 @@ impl ObjectPositionInsert {
 }
 
 #[derive(Queryable, Selectable, Clone)]
-#[diesel(table_name = crate::schema::app_settings)]
+#[diesel(table_name = crate::schema::config_profiles)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct AppSettingsRow {
-    pub id: i32,
-    pub lat: f64,
-    pub lon: f64,
-    pub view_windows_json: String,
-    pub bortle_class: i32,
+struct ConfigProfileRow {
+    id: i32,
+    name: String,
+    lat: f64,
+    lon: f64,
+    view_windows_json: String,
+    bortle_class: i32,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::config_profiles)]
+struct NewConfigProfile<'a> {
+    name: &'a str,
+    lat: f64,
+    lon: f64,
+    view_windows_json: &'a str,
+    bortle_class: i32,
+}
+
+#[derive(AsChangeset)]
+#[diesel(table_name = crate::schema::config_profiles)]
+struct ConfigProfileSettings<'a> {
+    lat: f64,
+    lon: f64,
+    view_windows_json: &'a str,
+    bortle_class: i32,
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = crate::schema::app_state)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+struct AppStateRow {
+    #[diesel(column_name = id)]
+    _id: i32,
+    active_profile_id: i32,
 }
 
 #[derive(Insertable, AsChangeset)]
-#[diesel(table_name = crate::schema::app_settings)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct AppSettingsUpsert {
-    pub id: i32,
-    pub lat: f64,
-    pub lon: f64,
-    pub view_windows_json: String,
-    pub bortle_class: i32,
+#[diesel(table_name = crate::schema::app_state)]
+struct AppStateUpsert {
+    id: i32,
+    active_profile_id: i32,
 }
 
-impl AppSettingsRow {
-    pub fn into_settings(self) -> Result<AppSettings, String> {
-        AppSettings::from_parts(
-            self.lat,
-            self.lon,
-            &self.view_windows_json,
-            self.bortle_class.clamp(1, 9) as u8,
-        )
-    }
+/// A named, durable observer configuration.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConfigProfile {
+    pub id: i32,
+    pub name: String,
+    pub settings: AppSettings,
+}
 
-    /// Load settings from DB, or seed Paris defaults when the table is empty.
-    pub fn load_or_seed(conn: &mut SqliteConnection) -> Result<AppSettings, String> {
-        use crate::schema::app_settings::dsl::*;
-        let rows = app_settings
-            .filter(id.eq(1))
-            .select(AppSettingsRow::as_select())
-            .load::<AppSettingsRow>(conn)
-            .map_err(|e| format!("load app_settings: {e}"))?;
-        if let Some(row) = rows.into_iter().next() {
-            return row.into_settings();
+impl ConfigProfileRow {
+    fn into_profile(self) -> Result<ConfigProfile, String> {
+        Ok(ConfigProfile {
+            id: self.id,
+            name: self.name,
+            settings: AppSettings::from_parts(
+                self.lat,
+                self.lon,
+                &self.view_windows_json,
+                self.bortle_class.clamp(1, 9) as u8,
+            )?,
+        })
+    }
+}
+
+impl ConfigProfile {
+    fn normalized_name(name: &str) -> Result<&str, String> {
+        let name = name.trim();
+        if name.is_empty() {
+            Err("Profile name cannot be empty".into())
+        } else if name.chars().count() > 80 {
+            Err("Profile name must be 80 characters or fewer".into())
+        } else {
+            Ok(name)
         }
-        let defaults = AppSettings::paris_defaults();
-        Self::upsert(conn, &defaults)?;
-        Ok(defaults)
     }
 
-    pub fn upsert(conn: &mut SqliteConnection, settings: &AppSettings) -> Result<(), String> {
-        use crate::schema::app_settings;
-        let json = settings
-            .view_windows_json()
-            .map_err(|e| format!("encode view_windows: {e}"))?;
-        let row = AppSettingsUpsert {
-            id: 1,
+    fn encoded<'a>(name: &'a str, settings: &AppSettings, json: &'a str) -> NewConfigProfile<'a> {
+        NewConfigProfile {
+            name,
             lat: settings.lat,
             lon: settings.lon,
             view_windows_json: json,
             bortle_class: settings.bortle_class as i32,
+        }
+    }
+
+    pub fn list(conn: &mut SqliteConnection) -> Result<Vec<Self>, String> {
+        use crate::schema::config_profiles::dsl::*;
+        config_profiles
+            .order(name.asc())
+            .select(ConfigProfileRow::as_select())
+            .load::<ConfigProfileRow>(conn)
+            .map_err(|e| format!("load configuration profiles: {e}"))?
+            .into_iter()
+            .map(ConfigProfileRow::into_profile)
+            .collect()
+    }
+
+    pub fn load(conn: &mut SqliteConnection, profile_id: i32) -> Result<Self, String> {
+        use crate::schema::config_profiles::dsl::*;
+        config_profiles
+            .filter(id.eq(profile_id))
+            .select(ConfigProfileRow::as_select())
+            .first::<ConfigProfileRow>(conn)
+            .map_err(|e| format!("load configuration profile: {e}"))?
+            .into_profile()
+    }
+
+    /// Load the active profile, seeding the Paris default when no profile exists.
+    pub fn load_or_seed_active(conn: &mut SqliteConnection) -> Result<Self, String> {
+        let profiles = Self::list(conn)?;
+        let fallback = if let Some(profile) = profiles.first() {
+            profile.clone()
+        } else {
+            Self::create(conn, "Default", &AppSettings::paris_defaults())?
         };
-        diesel::insert_into(app_settings::table)
+
+        use crate::schema::app_state::dsl::*;
+        let state = app_state
+            .filter(id.eq(1))
+            .select(AppStateRow::as_select())
+            .first::<AppStateRow>(conn)
+            .optional()
+            .map_err(|e| format!("load active profile: {e}"))?;
+        if let Some(state) = state
+            && let Ok(profile) = Self::load(conn, state.active_profile_id)
+        {
+            return Ok(profile);
+        }
+        Self::set_active(conn, fallback.id)?;
+        Ok(fallback)
+    }
+
+    pub fn create(
+        conn: &mut SqliteConnection,
+        profile_name: &str,
+        settings: &AppSettings,
+    ) -> Result<Self, String> {
+        use crate::schema::config_profiles;
+        let profile_name = Self::normalized_name(profile_name)?;
+        if !settings.is_valid() {
+            return Err("Cannot save an invalid configuration".into());
+        }
+        let json = settings
+            .view_windows_json()
+            .map_err(|e| format!("encode view windows: {e}"))?;
+        diesel::insert_into(config_profiles::table)
+            .values(Self::encoded(profile_name, settings, &json))
+            .execute(conn)
+            .map_err(|e| format!("create configuration profile: {e}"))?;
+
+        use crate::schema::config_profiles::dsl::*;
+        config_profiles
+            .order(id.desc())
+            .select(ConfigProfileRow::as_select())
+            .first::<ConfigProfileRow>(conn)
+            .map_err(|e| format!("reload configuration profile: {e}"))?
+            .into_profile()
+    }
+
+    pub fn update(
+        conn: &mut SqliteConnection,
+        profile_id: i32,
+        settings: &AppSettings,
+    ) -> Result<(), String> {
+        use crate::schema::config_profiles::dsl::*;
+        if !settings.is_valid() {
+            return Err("Cannot save an invalid configuration".into());
+        }
+        let json = settings
+            .view_windows_json()
+            .map_err(|e| format!("encode view windows: {e}"))?;
+        let changes = ConfigProfileSettings {
+            lat: settings.lat,
+            lon: settings.lon,
+            view_windows_json: &json,
+            bortle_class: settings.bortle_class as i32,
+        };
+        let changed = diesel::update(config_profiles.filter(id.eq(profile_id)))
+            .set(changes)
+            .execute(conn)
+            .map_err(|e| format!("save configuration profile: {e}"))?;
+        if changed == 0 {
+            return Err("Configuration profile no longer exists".into());
+        }
+        Ok(())
+    }
+
+    pub fn rename(
+        conn: &mut SqliteConnection,
+        profile_id: i32,
+        profile_name: &str,
+    ) -> Result<(), String> {
+        use crate::schema::config_profiles::dsl::*;
+        let profile_name = Self::normalized_name(profile_name)?;
+        diesel::update(config_profiles.filter(id.eq(profile_id)))
+            .set(name.eq(profile_name))
+            .execute(conn)
+            .map_err(|e| format!("rename configuration profile: {e}"))?;
+        Ok(())
+    }
+
+    pub fn set_active(conn: &mut SqliteConnection, profile_id: i32) -> Result<(), String> {
+        let _ = Self::load(conn, profile_id)?;
+        use crate::schema::app_state;
+        let row = AppStateUpsert {
+            id: 1,
+            active_profile_id: profile_id,
+        };
+        diesel::insert_into(app_state::table)
             .values(&row)
-            .on_conflict(app_settings::id)
+            .on_conflict(app_state::id)
             .do_update()
             .set(&row)
             .execute(conn)
-            .map_err(|e| format!("upsert app_settings: {e}"))?;
+            .map_err(|e| format!("set active configuration profile: {e}"))?;
         Ok(())
+    }
+
+    /// Delete a profile and return the active profile that remains.
+    pub fn delete(conn: &mut SqliteConnection, profile_id: i32) -> Result<Self, String> {
+        let profiles = Self::list(conn)?;
+        if profiles.len() <= 1 {
+            return Err("The last configuration profile cannot be deleted".into());
+        }
+        let active = Self::load_or_seed_active(conn)?;
+        let replacement = profiles
+            .iter()
+            .find(|profile| profile.id != profile_id)
+            .cloned()
+            .ok_or_else(|| "No replacement configuration profile found".to_string())?;
+        if active.id == profile_id {
+            Self::set_active(conn, replacement.id)?;
+        }
+
+        use crate::schema::config_profiles::dsl::*;
+        diesel::delete(config_profiles.filter(id.eq(profile_id)))
+            .execute(conn)
+            .map_err(|e| format!("delete configuration profile: {e}"))?;
+        Self::load_or_seed_active(conn)
     }
 }
 
 #[cfg(test)]
-mod app_settings_tests {
+mod config_profile_tests {
     use super::*;
     use diesel::Connection;
+    use diesel::connection::SimpleConnection;
 
     fn setup_conn() -> SqliteConnection {
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
-        diesel::sql_query(
+        conn.batch_execute(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE config_profiles (
+                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                lat DOUBLE NOT NULL,
+                lon DOUBLE NOT NULL,
+                view_windows_json TEXT NOT NULL,
+                bortle_class INTEGER NOT NULL DEFAULT 5
+             );
+             CREATE TABLE app_state (
+                id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+                active_profile_id INTEGER NOT NULL REFERENCES config_profiles(id)
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn load_or_seed_inserts_active_paris_default() {
+        let mut conn = setup_conn();
+        let profile = ConfigProfile::load_or_seed_active(&mut conn).unwrap();
+        assert_eq!(profile.name, "Default");
+        assert!(profile.settings.is_valid());
+        assert_eq!(ConfigProfile::list(&mut conn).unwrap().len(), 1);
+        assert_eq!(
+            ConfigProfile::load_or_seed_active(&mut conn).unwrap().id,
+            profile.id
+        );
+    }
+
+    #[test]
+    fn create_switch_update_rename_and_delete_profiles() {
+        let mut conn = setup_conn();
+        let default = ConfigProfile::load_or_seed_active(&mut conn).unwrap();
+        let mut settings = default.settings.clone();
+        settings.lat = 45.0;
+        let second = ConfigProfile::create(&mut conn, "Dark site", &settings).unwrap();
+        ConfigProfile::set_active(&mut conn, second.id).unwrap();
+        settings.lon = 1.0;
+        ConfigProfile::update(&mut conn, second.id, &settings).unwrap();
+        ConfigProfile::rename(&mut conn, second.id, "Mountain").unwrap();
+        let active = ConfigProfile::load_or_seed_active(&mut conn).unwrap();
+        assert_eq!(active.name, "Mountain");
+        assert!((active.settings.lon - 1.0).abs() < 1e-9);
+
+        let remaining = ConfigProfile::delete(&mut conn, second.id).unwrap();
+        assert_eq!(remaining.id, default.id);
+        assert_eq!(ConfigProfile::list(&mut conn).unwrap().len(), 1);
+        assert!(ConfigProfile::delete(&mut conn, default.id).is_err());
+    }
+
+    #[test]
+    fn names_are_required_and_case_insensitively_unique() {
+        let mut conn = setup_conn();
+        let settings = AppSettings::paris_defaults();
+        ConfigProfile::create(&mut conn, "Home", &settings).unwrap();
+        assert!(ConfigProfile::create(&mut conn, "home", &settings).is_err());
+        assert!(ConfigProfile::create(&mut conn, "  ", &settings).is_err());
+    }
+
+    #[test]
+    fn migration_preserves_legacy_settings_as_default_profile() {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.batch_execute(
             "CREATE TABLE app_settings (
                 id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
                 lat DOUBLE NOT NULL,
                 lon DOUBLE NOT NULL,
                 view_windows_json TEXT NOT NULL,
                 bortle_class INTEGER NOT NULL DEFAULT 5
-            )",
+             );
+             INSERT INTO app_settings
+                (id, lat, lon, view_windows_json, bortle_class)
+             VALUES
+                (1, 51.5, -0.12,
+                 '[{\"min_az_deg\":350.0,\"max_az_deg\":10.0,\"min_alt_deg\":5.0,\"max_alt_deg\":70.0}]',
+                 4);",
         )
-        .execute(&mut conn)
         .unwrap();
-        conn
-    }
+        conn.batch_execute(include_str!(
+            "../migrations/2026-08-25-073600-0000_config_profiles/up.sql"
+        ))
+        .unwrap();
 
-    #[test]
-    fn load_or_seed_inserts_paris_defaults() {
-        let mut conn = setup_conn();
-        let settings = AppSettingsRow::load_or_seed(&mut conn).unwrap();
-        assert!(settings.is_valid());
-        assert!((settings.lat - 48.8566).abs() < 1e-9);
-        let again = AppSettingsRow::load_or_seed(&mut conn).unwrap();
-        assert_eq!(settings, again);
-    }
-
-    #[test]
-    fn upsert_round_trip() {
-        let mut conn = setup_conn();
-        let mut settings = AppSettings::paris_defaults();
-        settings.lat = 45.0;
-        settings.lon = 1.0;
-        AppSettingsRow::upsert(&mut conn, &settings).unwrap();
-        let loaded = AppSettingsRow::load_or_seed(&mut conn).unwrap();
-        assert!((loaded.lat - 45.0).abs() < 1e-9);
-        assert!((loaded.lon - 1.0).abs() < 1e-9);
-        assert_eq!(loaded.view_windows, settings.view_windows);
+        let profile = ConfigProfile::load_or_seed_active(&mut conn).unwrap();
+        assert_eq!(profile.name, "Default");
+        assert!((profile.settings.lat - 51.5).abs() < 1e-9);
+        assert!((profile.settings.lon + 0.12).abs() < 1e-9);
+        assert_eq!(profile.settings.bortle_class, 4);
+        assert!(profile.settings.view_windows[0].wraps_north());
     }
 }
 

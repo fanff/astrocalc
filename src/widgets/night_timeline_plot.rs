@@ -4,9 +4,7 @@ use egui::{Color32, Id, Response, RichText, Sense, Stroke, Vec2, Vec2b};
 use egui_plot::{AxisHints, Bar, BarChart, GridInput, GridMark, Plot, PlotBounds, PlotPoint};
 use std::collections::HashMap;
 
-use crate::satellites::{
-    Observer, moon_illum_pct, moon_phase_label, observer_moon_altitude_deg,
-};
+use crate::satellites::{Observer, moon_illum_pct, moon_phase_label, observer_moon_altitude_deg};
 use crate::solarsystemcalc::{NightInfo, ObjectPositionSegments, get_object_color};
 use crate::timezone_util::format_hm_local;
 
@@ -215,9 +213,8 @@ impl egui::Widget for &mut NightTimelinePlot {
                 let bg = (Id::new(night_bg_key(row.date)), row.date);
                 let objs = row.segments.segments.iter().flat_map(move |(name, segs)| {
                     let date = row.date;
-                    (0..segs.len()).map(move |si| {
-                        (Id::new(segment_series_key(name, date, si)), date)
-                    })
+                    (0..segs.len())
+                        .map(move |si| (Id::new(segment_series_key(name, date, si)), date))
                 });
                 std::iter::once(bg).chain(objs)
             })
@@ -272,9 +269,7 @@ impl egui::Widget for &mut NightTimelinePlot {
 
         let tips = tip_rows.clone();
         let label_fmt = move |name: &str, _value: &PlotPoint| {
-            tips.get(name)
-                .cloned()
-                .unwrap_or_else(|| name.to_string())
+            tips.get(name).cloned().unwrap_or_else(|| name.to_string())
         };
 
         let rows = self.rows.clone();
@@ -440,9 +435,7 @@ fn draw_night_background(
         .fill(fill)
         .stroke(Stroke::new(0.5, Color32::from_gray(70)))
         .name(night_bg_key(row.date));
-    plot_ui.bar_chart(
-        BarChart::new(night_bg_key(row.date), vec![bar]).allow_hover(false),
-    );
+    plot_ui.bar_chart(BarChart::new(night_bg_key(row.date), vec![bar]).allow_hover(false));
 }
 
 fn draw_object_segments(
@@ -475,9 +468,8 @@ fn draw_object_segments(
                 .stroke(Stroke::new(0.0, color))
                 .name(key.clone());
             plot_ui.bar_chart(
-                BarChart::new(key, vec![bar]).element_formatter(Box::new(move |_bar, _chart| {
-                    tip.clone()
-                })),
+                BarChart::new(key, vec![bar])
+                    .element_formatter(Box::new(move |_bar, _chart| tip.clone())),
             );
         }
     }

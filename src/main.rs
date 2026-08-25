@@ -1,7 +1,7 @@
 pub mod config;
 
 use crate::gui::AstroCalcApp;
-use crate::models::AppSettingsRow;
+use crate::models::ConfigProfile;
 use crate::weather_cache::WeatherCache;
 use diesel::{Connection, SqliteConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_url = resolve_database_url();
     let mut conn = open_and_migrate(&database_url)?;
-    let settings = AppSettingsRow::load_or_seed(&mut conn)?;
+    let active_profile = ConfigProfile::load_or_seed_active(&mut conn)?;
     drop(conn);
 
     let weather_cache = WeatherCache::new(
@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(move |cc| {
             Ok(Box::new(AstroCalcApp::new(
                 cc.egui_ctx.clone(),
-                settings,
+                active_profile,
                 database_url,
                 weather_cache,
                 tle_cache,
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod boot_tests {
     use super::*;
-    use crate::models::AppSettingsRow;
+    use crate::models::ConfigProfile;
 
     #[test]
     fn migrate_and_seed_temp_database() {
@@ -86,9 +86,10 @@ mod boot_tests {
         let _ = std::fs::remove_file(&path);
         let url = path.to_str().unwrap().to_string();
         let mut conn = open_and_migrate(&url).expect("migrate");
-        let settings = AppSettingsRow::load_or_seed(&mut conn).expect("seed");
-        assert!(settings.is_valid());
-        assert!((settings.lat - 48.8566).abs() < 1e-9);
+        let profile = ConfigProfile::load_or_seed_active(&mut conn).expect("seed");
+        assert_eq!(profile.name, "Default");
+        assert!(profile.settings.is_valid());
+        assert!((profile.settings.lat - 48.8566).abs() < 1e-9);
         drop(conn);
         let _ = std::fs::remove_file(&path);
     }

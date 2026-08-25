@@ -1,8 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    app_settings (id) {
+    app_state (id) {
         id -> Integer,
+        active_profile_id -> Integer,
+    }
+}
+
+diesel::table! {
+    config_profiles (id) {
+        id -> Integer,
+        name -> Text,
         lat -> Double,
         lon -> Double,
         view_windows_json -> Text,
@@ -48,4 +56,12 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(app_settings, dateinfo, objectposition, iss_events,);
+diesel::joinable!(app_state -> config_profiles (active_profile_id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    app_state,
+    config_profiles,
+    dateinfo,
+    objectposition,
+    iss_events,
+);
