@@ -108,15 +108,31 @@ impl Plugin for &mut LocationClickPlugin {
                 }
 
                 let stroke = Stroke::new(if selected { 2.5_f32 } else { 1.5_f32 }, color);
-                for azimuth in [window.min_az_deg, window.max_az_deg] {
+                for (boundary_index, azimuth) in [window.min_az_deg, window.max_az_deg]
+                    .into_iter()
+                    .enumerate()
+                {
                     let endpoint = screen + azimuth_vector(azimuth, radius);
                     painter.line_segment([screen, endpoint], stroke);
+                    let tangent = azimuth_vector(azimuth + 90.0, 18.0);
+                    let label_pos = endpoint
+                        + azimuth_vector(azimuth, 12.0)
+                        + if boundary_index == 0 {
+                            tangent
+                        } else {
+                            -tangent
+                        };
+                    painter.rect_filled(
+                        egui::Rect::from_center_size(label_pos, Vec2::new(40.0, 18.0)),
+                        4.0,
+                        Color32::from_rgba_unmultiplied(12, 18, 24, 220),
+                    );
                     painter.text(
-                        endpoint + azimuth_vector(azimuth, 8.0),
+                        label_pos,
                         Align2::CENTER_CENTER,
                         format!("{azimuth:.0}°"),
                         FontId::proportional(11.0),
-                        color,
+                        Color32::WHITE,
                     );
                 }
                 let arc = azimuths
