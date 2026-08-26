@@ -5,6 +5,7 @@
 
 mod brightness;
 mod events;
+#[cfg(test)]
 mod fixtures;
 mod illumination;
 mod passes;
@@ -13,17 +14,15 @@ mod tle;
 mod transit;
 
 pub use brightness::{cloud_label, magnitude_phrase, naked_eye_label};
-pub use events::{DiskBody, DiskTransit, IssEventKind, TrackSample, VisiblePass};
+pub use events::{DiskBody, DiskTransit, VisiblePass};
 pub use illumination::{
-    DEFAULT_OBSERVER_SUN_MAX_ALT_DEG, moon_illum_pct, moon_phase_label, observer_moon_altitude_deg,
-    observer_sky_dark, observer_sun_altitude_deg, pass_illumination_ok, satellite_sunlit,
-    sun_semi_diameter_deg,
+    moon_illum_pct, moon_phase_label, observer_moon_altitude_deg,
 };
 pub use passes::{PassSearchParams, find_passes};
-pub use propagate::{Observer, Propagator, Topocentric};
+pub use propagate::Observer;
 pub use tle::{
-    CELESTRAK_ISS_TLE_URL, CachedTle, DEFAULT_TLE_FRESHNESS, ISS_NORAD_ID, PASS_STALE_AGE,
-    TRANSIT_WARN_AGE, TleCache, fetch_iss_tle, parse_tle_text,
+    CachedTle, DEFAULT_TLE_FRESHNESS, PASS_STALE_AGE,
+    TRANSIT_WARN_AGE, TleCache,
 };
 pub use transit::{TransitSearchParams, bearing_to_compass, find_disk_events};
 

@@ -134,9 +134,8 @@ impl DateInfoInsert {
     ) {
         use crate::schema::dateinfo;
         let new_elements = DateInfoInsert::from_vec(night_info_vec, lat_sector_val, lon_sector_val);
-        let q = diesel::insert_into(dateinfo::table)
+        diesel::insert_into(dateinfo::table)
             .values(new_elements)
-            //.returning(DateInfo::as_returning())
             .execute(conn)
             .expect("error saving");
     }

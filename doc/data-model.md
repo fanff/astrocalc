@@ -148,9 +148,7 @@ Implemented in [src/weather_cache.rs](../src/weather_cache.rs).
 
 Embedded CSV: [src/deepsky/ngc-ic-messier-catalog.csv](../src/deepsky/ngc-ic-messier-catalog.csv), loaded once via `once_cell::Lazy` in [src/deepsky/data.rs](../src/deepsky/data.rs).
 
-Notable fields on `DeepObject`: identifiers (NGC/IC/Messier), `ra` / `dec` strings, sizes, `v_mag` (and other bands), constellation, notes.
-
-`filter_magnitude(max_v_mag)` keeps objects with `v_mag <= max_v_mag` (objects without `v_mag` are dropped).
+Notable fields on `DeepObject`: identifiers (NGC/IC/Messier), `ra` / `dec` strings, sizes, `v_mag` (and other bands), constellation, notes. Catalog UI filters by magnitude in [src/widgets/catalog_select.rs](../src/widgets/catalog_select.rs).
 
 DSO position samples are stored in `objectposition` with `kind='dso'` (selected-id merge; see above).
 

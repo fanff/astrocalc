@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, NaiveDateTime, TimeDelta, Timelike, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, TimeDelta, Utc};
 use open_meteo_rs::forecast::{ForecastResult, ForecastResultHourly};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -245,16 +245,6 @@ fn value_f64(
     }
 }
 
-/// Compact wind direction label from degrees (meteorological: direction wind comes from).
-pub fn wind_cardinal(degrees: f64) -> &'static str {
-    let dirs = [
-        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW",
-        "NW", "NNW",
-    ];
-    let idx = ((degrees.rem_euclid(360.0) + 11.25) / 22.5) as usize % dirs.len();
-    dirs[idx]
-}
-
 impl WeatherSnapshot {
     /// Nearest hourly cloud cover % to `utc`, or `None` if forecast has no nearby hour.
     pub fn cloud_cover_near(&self, utc: DateTime<Utc>) -> Option<f64> {
@@ -305,22 +295,4 @@ pub fn noon_utc_for_date(date: chrono::NaiveDate) -> DateTime<Utc> {
     date.and_hms_opt(12, 0, 0)
         .map(|ndt| DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc))
         .unwrap_or_else(Utc::now)
-}
-
-/// Round age for status labels.
-pub fn format_age(fetched_at: DateTime<Utc>) -> String {
-    let age = Utc::now() - fetched_at;
-    let mins = age.num_minutes().max(0);
-    if mins < 1 {
-        "just now".into()
-    } else if mins < 60 {
-        format!("{mins} min ago")
-    } else {
-        format!("{} h ago", mins / 60)
-    }
-}
-
-/// Format an hour label in UTC.
-pub fn format_hour_utc(dt: DateTime<Utc>) -> String {
-    format!("{:02}:00", dt.hour())
 }

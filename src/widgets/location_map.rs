@@ -24,16 +24,6 @@ pub enum MapTileMode {
     Offline,
 }
 
-impl MapTileMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            MapTileMode::Auto => "Auto",
-            MapTileMode::Online => "OSM",
-            MapTileMode::Offline => "Offline",
-        }
-    }
-}
-
 /// Click-to-set location; marker is always drawn from `marker` (canonical lat/lon).
 #[derive(Clone)]
 pub struct LocationClickPlugin {

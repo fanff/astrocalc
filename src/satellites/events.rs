@@ -81,13 +81,6 @@ pub struct DiskTransit {
     pub moon_illum_pct: Option<f64>,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum IssEventKind {
-    VisiblePass,
-    DiskTransit,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

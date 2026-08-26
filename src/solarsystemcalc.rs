@@ -4,16 +4,16 @@ use core::fmt;
 use std::collections::{HashMap, HashSet};
 
 use astro::{
-    angle, consts,
-    coords::{self, EclPoint, hr_angl_frm_observer_long},
+    angle,
+    coords::{EclPoint, hr_angl_frm_observer_long},
     ecliptic,
-    lunar::{self, geocent_ecl_pos},
+    lunar::{self},
     planet::{self, Planet},
     sun,
-    time::{self, CalType, Date, DayOfMonth},
+    time::{self},
 };
 use bincode::{Decode, Encode};
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveTime, Utc};
 
 use diesel::{Connection, SqliteConnection};
 use egui::Color32;
@@ -42,10 +42,6 @@ pub const PLANET_LIST: [planet::Planet; 7] = [
 pub const PLANET_NAMES: [&str; 7] = [
     "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune",
 ];
-pub const OBJECT_NAMES_WITH_MOON: [&str; 8] = [
-    "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Moon",
-];
-
 /// Bright, conventional colors readable on a dark plot background.
 static OBJECT_COLORS: [Color32; 8] = [
     Color32::from_rgb(180, 180, 190), // Mercury - silver-gray
@@ -106,6 +102,7 @@ pub fn darken_for_bar_fill(color: Color32) -> Color32 {
 
 /// Map altitude (degrees, clamped 0–90) to a hue gradient for night-timeline segments.
 /// Low altitude → warm red/orange; high → cool blue/white.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn altitude_to_color(alt_deg: f64) -> Color32 {
     let alt = alt_deg.clamp(0.0, 90.0);
     let t = alt / 90.0;
@@ -133,6 +130,7 @@ pub fn altitude_to_color(alt_deg: f64) -> Color32 {
 
 /// Sky darkness from solar altitude (degrees). 0 = bright twilight, 1 = deep night.
 /// Uses nautical twilight (−6°) and astronomical twilight (−18°) as anchors.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn sky_darkness_from_sun_alt(sun_alt_deg: f64) -> f32 {
     if sun_alt_deg >= -6.0 {
         let t = ((sun_alt_deg + 6.0) / 6.0).clamp(0.0, 1.0);
@@ -143,15 +141,6 @@ pub fn sky_darkness_from_sun_alt(sun_alt_deg: f64) -> f32 {
     }
     let t = ((sun_alt_deg + 18.0) / 12.0).clamp(0.0, 1.0);
     (0.35 + 0.65 * t) as f32
-}
-
-/// RGB fill for a clear-sky twilight strip at the given darkness level.
-pub fn sky_darkness_to_color(darkness: f32) -> Color32 {
-    let d = darkness.clamp(0.0, 1.0);
-    let r = (18.0 + 55.0 * (1.0 - d)) as u8;
-    let g = (22.0 + 48.0 * (1.0 - d)) as u8;
-    let b = (38.0 + 72.0 * d) as u8;
-    Color32::from_rgb(r, g, b)
 }
 
 // make a static hash map of planet name to index in Planet Name
@@ -192,17 +181,6 @@ impl ObsFrame {
     }
 }
 
-/// Compute apparent sky positions (alt/az) and magnitudes for all planets
-pub fn solar_system_positions(
-    date: NaiveDate,
-    datetime: DateTime<Utc>,
-    lat_deg: f64,
-    lon_deg: f64,
-) -> Vec<ObjectPosition> {
-    let frame = ObsFrame::new(datetime, lat_deg, lon_deg);
-    solar_system_positions_with_frame(date, datetime, &frame)
-}
-
 fn solar_system_positions_with_frame(
     date: NaiveDate,
     datetime: DateTime<Utc>,
@@ -233,16 +211,6 @@ fn solar_system_positions_with_frame(
             })
         })
         .collect()
-}
-
-pub fn moon_position(
-    date: NaiveDate,
-    datetime: DateTime<Utc>,
-    lat_deg: f64,
-    lon_deg: f64,
-) -> ObjectPosition {
-    let frame = ObsFrame::new(datetime, lat_deg, lon_deg);
-    moon_position_with_frame(date, datetime, &frame)
 }
 
 fn moon_position_with_frame(
@@ -298,9 +266,8 @@ fn ceil_to_minutes(dt: DateTime<Utc>, step_min: i64) -> DateTime<Utc> {
 pub fn nights_spans(start_date: NaiveDate, lat: f64, lon: f64, day_count: i64) -> Vec<NightInfo> {
     // compute one extra day for "next sunrise"
     let mut daily: Vec<(NaiveDate, i64, i64)> = Vec::new();
-    // convert lon to h m s
+    // Approximate local noon from longitude (hours east of Greenwich).
     let lon_h = (lon / 15.0).floor() as i32;
-    let lon_m = ((lon / 15.0 - lon_h as f64) * 60.0).floor() as i32;
     for day_offset in 0..=day_count {
         let current_day = start_date + Duration::days(day_offset);
         let ts = current_day
@@ -605,11 +572,6 @@ impl ObjectPositionSegments {
             segments: filtered_segments_map,
         }
     }
-}
-
-pub fn calc_mag(p: &Planet, jd: f64) -> (f64, f64) {
-    let earth = planet::heliocent_coords(&planet::Planet::Earth, jd);
-    calc_mag_with_earth(p, jd, earth)
 }
 
 fn calc_mag_with_earth(p: &Planet, jd: f64, earth_helio: (f64, f64, f64)) -> (f64, f64) {

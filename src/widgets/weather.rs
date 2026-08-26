@@ -167,7 +167,7 @@ fn wind_label_formatter<'a>(
 /// Reserve a fixed-width label column that cannot grow with text length.
 fn weather_gutter(ui: &mut Ui, height: f32, add_contents: impl FnOnce(&mut Ui)) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(Y_LABEL_WIDTH, height), Sense::hover());
-    ui.allocate_new_ui(
+    ui.scope_builder(
         UiBuilder::new()
             .max_rect(rect)
             .layout(egui::Layout::right_to_left(egui::Align::Center)),

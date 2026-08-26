@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 use super::propagate::Propagator;
 
 pub const ISS_NORAD_ID: u64 = 25544;
-pub const CELESTRAK_ISS_TLE_URL: &str =
-    "https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=tle";
+
+fn celestrak_iss_tle_url() -> String {
+    format!("https://celestrak.org/NORAD/elements/gp.php?CATNR={ISS_NORAD_ID}&FORMAT=tle")
+}
 
 /// Default max age before a background refetch is preferred.
 pub const DEFAULT_TLE_FRESHNESS: Duration = Duration::hours(6);
@@ -118,7 +120,7 @@ pub fn parse_tle_text(text: &str, fetched_at: DateTime<Utc>) -> Result<CachedTle
 
 /// HTTP fetch from Celestrak (blocking; call from async Bind / background).
 pub fn fetch_iss_tle() -> Result<CachedTle, String> {
-    let body = ureq::get(CELESTRAK_ISS_TLE_URL)
+    let body = ureq::get(&celestrak_iss_tle_url())
         .call()
         .map_err(|e| format!("TLE HTTP: {e}"))?
         .into_string()

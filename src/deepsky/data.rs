@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::io::Cursor;
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // many OpenNGC columns are deserialized for completeness / future UI
 pub struct DeepObject {
     #[serde(rename = "IC - NGC")]
     pub ic_ngc: Option<String>,
@@ -198,24 +199,6 @@ pub struct DeepSkyCatalog {
     pub objects: Vec<DeepObject>,
 }
 impl DeepSkyCatalog {
-    pub fn len(&self) -> usize {
-        self.objects.len()
-    }
-    pub fn filter_magnitude(&self, max_v_mag: f32) -> DeepSkyCatalog {
-        let filter: Vec<&DeepObject> = self
-            .objects
-            .iter()
-            .filter(|obj| match obj.v_mag {
-                Some(mag) => mag <= max_v_mag,
-                None => false,
-            })
-            .collect();
-        let vec_filtered: Vec<DeepObject> = filter.iter().map(|&obj| obj.clone()).collect();
-        DeepSkyCatalog {
-            objects: vec_filtered,
-        }
-    }
-
     pub fn messier_objects(&self) -> Vec<&DeepObject> {
         let mut out: Vec<&DeepObject> = self.objects.iter().filter(|o| o.has_messier()).collect();
         out.sort_by(|a, b| {
@@ -241,15 +224,6 @@ impl DeepSkyCatalog {
                 .then_with(|| a.display_id().cmp(&b.display_id()))
         });
         out
-    }
-
-    pub fn find_by_display_id(&self, id: &str) -> Option<&DeepObject> {
-        let needle = id.trim().to_uppercase().replace(' ', "");
-        self.objects.iter().find(|o| {
-            o.display_id()
-                .map(|d| d.to_uppercase().replace(' ', "") == needle)
-                .unwrap_or(false)
-        })
     }
 }
 

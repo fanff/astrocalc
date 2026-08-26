@@ -1,5 +1,5 @@
 use astro::{angle, coords::hr_angl_frm_observer_long, time};
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use julian_day_converter::unixtime_to_julian_day;
 use std::collections::{HashMap, HashSet};
 
@@ -267,62 +267,12 @@ pub fn calculate_deep_sky_positions(
     (positions, type_map)
 }
 
-fn deep_sky_position_at(
-    obj: &DeepObject,
-    date: NaiveDate,
-    datetime: DateTime<Utc>,
-    lat_deg: f64,
-    lon_deg: f64,
-) -> Option<ObjectPosition> {
-    let (ra, dec) = obj.ra_dec_rad()?;
-    let name = obj.display_id()?;
-    let mag = obj.v_mag.map(|m| m as f64).unwrap_or(99.0);
-
-    let jd = unixtime_to_julian_day(datetime.timestamp());
-    let gmst = time::mn_sidr(jd);
-    let lat_rad = lat_deg.to_radians();
-    let lon_rad = lon_deg.to_radians();
-
-    let ra_norm = angle::limit_to_two_PI(ra);
-    let hour_angle = hr_angl_frm_observer_long(gmst, -lon_rad, ra);
-    let (az, alt) = astro::loc_hz_frm_eq!(hour_angle, dec, lat_rad);
-
-    Some(ObjectPosition {
-        name,
-        utc_datetime: datetime,
-        date,
-        ra: ra_norm.to_degrees(),
-        dec: dec.to_degrees(),
-        altitude: alt.to_degrees(),
-        azimuth: angle::limit_to_360(az.to_degrees() + 180.0),
-        magnitude: mag,
-        distance: 0.0,
-        phase_ratio: 0.0,
-    })
-}
-
-/// Convenience when only a single instant is needed (tests / debug).
-pub fn deep_sky_positions_at(
-    date: NaiveDate,
-    datetime: DateTime<Utc>,
-    lat_deg: f64,
-    lon_deg: f64,
-    mag_limit: f64,
-) -> Vec<ObjectPosition> {
-    let catalog = CATALOG.filter_magnitude(mag_limit as f32);
-    catalog
-        .objects
-        .iter()
-        .filter_map(|obj| deep_sky_position_at(obj, date, datetime, lat_deg, lon_deg))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::MIGRATIONS;
     use crate::deepsky::data::{parse_dms_to_degrees, parse_hms_to_degrees};
-    use chrono::Duration;
+    use chrono::{DateTime, Duration, Utc};
     use diesel::Connection;
     use diesel_migrations::MigrationHarness;
 
